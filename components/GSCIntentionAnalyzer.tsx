@@ -43,7 +43,6 @@ interface Analysis {
 }
 
 const COLORS = ['#f7c724', '#0edd89', '#27f6c5', '#c526f6', '#27bef7', '#fdf13e', '#f142fd'];
-const LOGO_SRC = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWkAAACLCAMAAACUXphBAAAAdVBMVEX///8AAAD4+Pjg4OAiIiJdXV0ODg67u7uQkJDk5OSCgoJJSUmVlZXNzc0nJyfs7Ox5eXloaGimpqYXFxfu7u44ODjV1dX19fVzc3PBwcGvr69CQkIdHR0yMjI8PDybm5tSUlJaWlp9fX1sbGwsLCzHx8ehoaHpf7pBAAAEz0lEQVR4nO2bbV+qMBiHnWgIWphBomWaPXz/j3hsu+89gkW/hNr5X2+OjN0NLvbExhmNAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOJnfCuZDXYBtSz/ZbDye2MsJM+DXcCduoDByu8NMj0d7AImsvyrwcrvDZjuC5juC5juC5juC5juC5juiwbT60KSufnut7Nlnb9vSjdZZj39SPP6fS2TTr/2SViQit+nhZcemlZ/syjG376pX0mDaREmJS9C85BaJ1KZtC5v5L/Xp5wq09ItJVua+GrrnApNH1S+mx+6w99CaHpGRqwqVQuHJ1MvlenxDceMOU9tF3J042/sKh+YTilXQ7v40wSmM7pRU/PKR+GjLSgtK05f6F/i3hSxC+KvzQX4pvlZDbcScyEC03OVMDdZrgJRQnBvLU1fzTn5Sf8Stzo+FC2EGQR809TPxDdE+qa3gQrTdTyays35qanPiox68lWZkG2OnzXFP+g/75m+pwxvF73rIfBMc9td6AwFu3k7ddzjdOI+idR4kxrz04+1yqFmInwkqs1H/BtXcN25eKZf/RYRDZ5pqpmPJsNCpejJBKnaqyNlWvapstnLDvjBfhYrr9FQjc/52DW9F85jignXNLddM5yNKrcv4CxU6VLTAnJtem6bfvbiacTV44BjmhuQOxGMA9c09Q32FG0l2ZgElWWnDj43vZXx1hzcW/p3TNNjMb14RDimqacQZ9/OlCl6r/jcdMBTu2meSreF/mls09x207MRFzRN5Uc3lZaQ6dfjcnmkLvnQmLHMFMU3TXN8WTWZFh/l02B5d4Hb/AXo12dDGWRK6zs/UyfTm+XEj/dNW1yPoiQ0/e5n2QZZuplOg8d01nQ9ipPQtN9L3zZ56mB62RjfbjrOXrqx93Az1GGGTqZnzfFneo8oZx6Npo/2+WtKzPXyXbcRkdarRa3jG+ceNtbiVkzoWd54zC/Ozsrws0qyXtq6maYmsTfxLbO8U/n8VK3XpIhw3lx2QaWi0/ZLWzfTTm7Jmfn0VLjnosIxzcseZlDMgirZzTSt5OVW/BnTJZUf5aDornvwdqE+Te5XVoToYpqe1MKKv2o3rZfyYhwUXdO8mKzrIJm2NmDfvmPa2qbkdsPH7qop7RUcfvw+h8dbn/YrFS+FmDWnSSfTPLUxe7zVWdMbOhvhoOjvblGl0oMi3XlFS/MJ74J/dUSkPZQJveIX1Eu3meZPECIcFH3T1DnoQVF/QFBvN+n7h8Oqk2leiBUvp/jVs45vM82NKL5BMdgb55kW9Rd855r5sZPptR+/m501rd8p/W+d/jyBaVbLg6K/vkSb4F9+G9948ff5edPcXw33/0EuRPs3TDworhxRKa04fX2FyX1Uq9FnpnnjJbZBkUwfrCS60x0fJwft6ZDp7kWda9wbrxzTo2Kq4+eJXtvzSrPKf6CkyL6AHCUS+1WhVEmJudNim0+n03wr+87CDljLg1Kny5hMJtp/cTu7PcWvMhOvT2eJn3tN5Uf4JcJvZtbG/vNY0AXRxuvQVxYbjTtjH1RDX1lswHRfwHRfoJ/uiwXmHgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPiv+Qf9IzMlbTGZCgAAAABJRU5ErkJggg==';
 
 export default function GSCIntentionAnalyzer() {
   const [step, setStep] = useState<number>(1);
@@ -234,6 +233,95 @@ export default function GSCIntentionAnalyzer() {
     }
   };
 
+  // Formater un insight pour meilleure lisibilité
+  const formatInsight = (text: string) => {
+    // Séparer en phrases
+    const sentences = text.split(/\.\s+/).filter(s => s.trim());
+
+    return (
+      <div style={{ lineHeight: '1.8' }}>
+        {sentences.map((sentence, idx) => {
+          // Regex pour détecter les citations
+          const parts = sentence.split(/("([^"]*)"|"([^"]*)")/g);
+
+          return (
+            <div key={idx} style={{ marginBottom: idx < sentences.length - 1 ? '12px' : 0 }}>
+              <span style={{ ...styles.text, fontSize: '14px' }}>
+                {parts.map((part, partIdx) => {
+                  // Si c'est une citation (requête exemple)
+                  if (/^"[^"]*"$/.test(part) || /^"[^"]*"$/.test(part)) {
+                    return (
+                      <span key={partIdx} style={{
+                        background: 'rgba(247, 199, 36, 0.1)',
+                        padding: '2px 6px',
+                        borderRadius: '3px',
+                        fontStyle: 'italic',
+                        color: '#fdf13e'
+                      }}>
+                        {part}
+                      </span>
+                    );
+                  }
+                  // Texte normal
+                  return <span key={partIdx}>{part}</span>;
+                })}
+                {idx < sentences.length - 1 && '.'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Footer component
+  const Footer = () => (
+    <div style={{
+      background: '#000',
+      borderTop: '1px solid #333',
+      padding: '30px 40px',
+      marginTop: '60px',
+      textAlign: 'center'
+    }}>
+      <p style={{ ...styles.text, margin: 0, fontSize: '14px', color: '#999' }}>
+        créé par <strong style={{ color: '#f7c724' }}>Bastien Amoruso</strong> et son ami <strong style={{ color: '#f7c724' }}>claude</strong>
+      </p>
+      <div style={{ marginTop: '12px', display: 'flex', gap: '20px', justifyContent: 'center', alignItems: 'center' }}>
+        <a
+          href="https://www.linkedin.com/in/bastien-amoruso-kamak/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            ...styles.text,
+            color: '#f7c724',
+            textDecoration: 'none',
+            fontSize: '14px',
+            transition: 'opacity 0.2s'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+          onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+        >
+          🔗 LinkedIn
+        </a>
+        <span style={{ color: '#333' }}>•</span>
+        <a
+          href="mailto:bastien.amoruso@kamak.ai"
+          style={{
+            ...styles.text,
+            color: '#f7c724',
+            textDecoration: 'none',
+            fontSize: '14px',
+            transition: 'opacity 0.2s'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+          onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+        >
+          ✉️ bastien.amoruso@kamak.ai
+        </a>
+      </div>
+    </div>
+  );
+
   // ÉTAPE 1: Upload
   if (step === 1) {
     return (
@@ -247,7 +335,26 @@ export default function GSCIntentionAnalyzer() {
           alignItems: 'center',
           gap: '20px'
         }}>
-          <img src={LOGO_SRC} alt="Logo" style={{ height: '60px' }} />
+          <div
+            onClick={() => {
+              setStep(1);
+              setQueries([]);
+              setClassifiedQueries([]);
+              setAnalysis(null);
+            }}
+            style={{
+              ...styles.title,
+              fontSize: '48px',
+              color: '#fff',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'opacity 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+            onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+          >
+            kamak_
+          </div>
           <div>
             <h1 style={{ ...styles.title, margin: 0, fontSize: '28px', color: '#f7c724' }}>
               GSC INTENTION ANALYZER
@@ -388,6 +495,8 @@ export default function GSCIntentionAnalyzer() {
             </button>
           </div>
         </div>
+
+        <Footer />
       </div>
     );
   }
@@ -408,7 +517,26 @@ export default function GSCIntentionAnalyzer() {
           justifyContent: 'space-between'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-            <img src={LOGO_SRC} alt="Logo" style={{ height: '60px' }} />
+            <div
+              onClick={() => {
+                setStep(1);
+                setQueries([]);
+                setClassifiedQueries([]);
+                setAnalysis(null);
+              }}
+              style={{
+                ...styles.title,
+                fontSize: '48px',
+                color: '#fff',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'opacity 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+            >
+              kamak_
+            </div>
             <div>
               <h1 style={{ ...styles.title, margin: 0, fontSize: '28px', color: '#f7c724' }}>
                 ✅ ANALYSE TERMINÉE
@@ -436,24 +564,24 @@ export default function GSCIntentionAnalyzer() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '30px' }}>
             <div style={{ ...styles.card, borderLeft: '4px solid #22c55e' }}>
               <div style={{ fontSize: '32px', marginBottom: '10px' }}>🎯</div>
-              <h3 style={{ ...styles.title, margin: '0 0 10px 0', fontSize: '14px', color: '#22c55e' }}>
+              <h3 style={{ ...styles.title, margin: '0 0 15px 0', fontSize: '14px', color: '#22c55e' }}>
                 OPPORTUNITÉ PRINCIPALE
               </h3>
-              <p style={{ ...styles.text, margin: 0, fontSize: '14px' }}>{analysis.insights.biggest_opportunity}</p>
+              {formatInsight(analysis.insights.biggest_opportunity)}
             </div>
             <div style={{ ...styles.card, borderLeft: '4px solid #ef4444' }}>
               <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚠️</div>
-              <h3 style={{ ...styles.title, margin: '0 0 10px 0', fontSize: '14px', color: '#ef4444' }}>
+              <h3 style={{ ...styles.title, margin: '0 0 15px 0', fontSize: '14px', color: '#ef4444' }}>
                 FRICTION PRINCIPALE
               </h3>
-              <p style={{ ...styles.text, margin: 0, fontSize: '14px' }}>{analysis.insights.biggest_friction}</p>
+              {formatInsight(analysis.insights.biggest_friction)}
             </div>
             <div style={{ ...styles.card, borderLeft: '4px solid #f7c724' }}>
               <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚡</div>
-              <h3 style={{ ...styles.title, margin: '0 0 10px 0', fontSize: '14px', color: '#f7c724' }}>
+              <h3 style={{ ...styles.title, margin: '0 0 15px 0', fontSize: '14px', color: '#f7c724' }}>
                 QUICK WIN
               </h3>
-              <p style={{ ...styles.text, margin: 0, fontSize: '14px' }}>{analysis.insights.quick_win}</p>
+              {formatInsight(analysis.insights.quick_win)}
             </div>
           </div>
 
@@ -791,6 +919,8 @@ export default function GSCIntentionAnalyzer() {
             </div>
           )}
         </div>
+
+        <Footer />
       </div>
     );
   }

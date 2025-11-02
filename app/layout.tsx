@@ -12,7 +12,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr">
-      <body style={{ margin: 0, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
+      </head>
+      <body style={{
+        margin: 0,
+        fontFamily: 'Roboto, sans-serif',
+        background: '#0a0a0a',
+        color: '#ffffff'
+      }}>
         {children}
       </body>
     </html>

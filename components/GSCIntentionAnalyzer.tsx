@@ -42,7 +42,8 @@ interface Analysis {
   };
 }
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658'];
+const COLORS = ['#f7c724', '#0edd89', '#27f6c5', '#c526f6', '#27bef7', '#fdf13e', '#f142fd'];
+const LOGO_SRC = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWkAAACLCAMAAACUXphBAAAAdVBMVEX///8AAAD4+Pjg4OAiIiJdXV0ODg67u7uQkJDk5OSCgoJJSUmVlZXNzc0nJyfs7Ox5eXloaGimpqYXFxfu7u44ODjV1dX19fVzc3PBwcGvr69CQkIdHR0yMjI8PDybm5tSUlJaWlp9fX1sbGwsLCzHx8ehoaHpf7pBAAAEz0lEQVR4nO2bbV+qMBiHnWgIWphBomWaPXz/j3hsu+89gkW/hNr5X2+OjN0NLvbExhmNAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOJnfCuZDXYBtSz/ZbDye2MsJM+DXcCduoDByu8NMj0d7AImsvyrwcrvDZjuC5juC5juC5juC5juC5juiwbT60KSufnut7Nlnb9vSjdZZj39SPP6fS2TTr/2SViQit+nhZcemlZ/syjG376pX0mDaREmJS9C85BaJ1KZtC5v5L/Xp5wq09ItJVua+GrrnApNH1S+mx+6w99CaHpGRqwqVQuHJ1MvlenxDceMOU9tF3J042/sKh+YTilXQ7v40wSmM7pRU/PKR+GjLSgtK05f6F/i3hSxC+KvzQX4pvlZDbcScyEC03OVMDdZrgJRQnBvLU1fzTn5Sf8Stzo+FC2EGQR809TPxDdE+qa3gQrTdTyays35qanPiox68lWZkG2OnzXFP+g/75m+pwxvF73rIfBMc9td6AwFu3k7ddzjdOI+idR4kxrz04+1yqFmInwkqs1H/BtXcN25eKZf/RYRDZ5pqpmPJsNCpejJBKnaqyNlWvapstnLDvjBfhYrr9FQjc/52DW9F85jignXNLddM5yNKrcv4CxU6VLTAnJtem6bfvbiacTV44BjmhuQOxGMA9c09Q32FG0l2ZgElWWnDj43vZXx1hzcW/p3TNNjMb14RDimqacQZ9/OlCl6r/jcdMBTu2meSreF/mls09x207MRFzRN5Uc3lZaQ6dfjcnmkLvnQmLHMFMU3TXN8WTWZFh/l02B5d4Hb/AXo12dDGWRK6zs/UyfTm+XEj/dNW1yPoiQ0/e5n2QZZuplOg8d01nQ9ipPQtN9L3zZ56mB62RjfbjrOXrqx93Az1GGGTqZnzfFneo8oZx6Npo/2+WtKzPXyXbcRkdarRa3jG+ceNtbiVkzoWd54zC/Ozsrws0qyXtq6maYmsTfxLbO8U/n8VK3XpIhw3lx2QaWi0/ZLWzfTTm7Jmfn0VLjnosIxzcseZlDMgirZzTSt5OVW/BnTJZUf5aDornvwdqE+Te5XVoToYpqe1MKKv2o3rZfyYhwUXdO8mKzrIJm2NmDfvmPa2qbkdsPH7qop7RUcfvw+h8dbn/YrFS+FmDWnSSfTPLUxe7zVWdMbOhvhoOjvblGl0oMi3XlFS/MJ74J/dUSkPZQJveIX1Eu3meZPECIcFH3T1DnoQVF/QFBvN+n7h8Oqk2leiBUvp/jVs45vM82NKL5BMdgb55kW9Rd855r5sZPptR+/m501rd8p/W+d/jyBaVbLg6K/vkSb4F9+G9948ff5edPcXw33/0EuRPs3TDworhxRKa04fX2FyX1Uq9FnpnnjJbZBkUwfrCS60x0fJwft6ZDp7kWda9wbrxzTo2Kq4+eJXtvzSrPKf6CkyL6AHCUS+1WhVEmJudNim0+n03wr+87CDljLg1Kny5hMJtp/cTu7PcWvMhOvT2eJn3tN5Uf4JcJvZtbG/vNY0AXRxuvQVxYbjTtjH1RDX1lswHRfwHRfoJ/uiwXmHgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPiv+Qf9IzMlbTGZCgAAAABJRU5ErkJggg==';
 
 export default function GSCIntentionAnalyzer() {
   const [step, setStep] = useState<number>(1);
@@ -53,8 +54,10 @@ export default function GSCIntentionAnalyzer() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [selectedCell, setSelectedCell] = useState<{ intention: string; posGroup: string; queries: QueryData[] } | null>(null);
+  const [expandedIntention, setExpandedIntention] = useState<string | null>(null);
 
-  // Étape 1 : Upload CSV
+  // Upload CSV
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -64,30 +67,40 @@ export default function GSCIntentionAnalyzer() {
       skipEmptyLines: true,
       complete: (results) => {
         try {
-          // Debug : afficher les colonnes détectées
           const firstRow = results.data[0] as any;
           const columns = firstRow ? Object.keys(firstRow) : [];
-          console.log('🔍 Colonnes détectées dans le CSV:', columns);
+          console.log('🔍 Colonnes détectées:', columns);
 
           const parsed = results.data.map((row: any) => {
-            // Gérer différents formats d'export GSC
-            const query = row['Top queries'] || row['Requête'] || row['Query'] || row['query'] || '';
+            const query = row['Requêtes les plus fréquentes'] || row['Requêtes'] || row['Top queries'] || row['Requête'] || row['Query'] || row['query'] || '';
             const clicks = parseFloat(row['Clicks'] || row['Clics'] || row['clicks'] || '0');
             const impressions = parseFloat(row['Impressions'] || row['impressions'] || '0');
-            const ctr = parseFloat(row['CTR'] || row['ctr'] || '0');
+
+            // Parser CTR en gérant le symbole %
+            const ctrRaw = row['CTR'] || row['ctr'] || '0';
+            let ctr = 0;
+            if (typeof ctrRaw === 'string' && ctrRaw.includes('%')) {
+              // Si contient %, c'est déjà un pourcentage (ex: "0.22%" ou "22%")
+              ctr = parseFloat(ctrRaw.replace('%', '').replace(',', '.')) / 100;
+            } else {
+              // Sinon, c'est un décimal (ex: 0.22 pour 22% ou 0.0022 pour 0.22%)
+              const ctrValue = parseFloat(String(ctrRaw).replace(',', '.'));
+              ctr = ctrValue > 1 ? ctrValue / 100 : ctrValue;
+            }
+
             const position = parseFloat(row['Position'] || row['position'] || '0');
 
             return {
               query: query.trim(),
               clicks,
               impressions,
-              ctr: ctr > 1 ? ctr / 100 : ctr, // Normaliser le CTR
+              ctr,
               position
             };
           }).filter(q => q.query && q.impressions > 0);
 
           if (parsed.length === 0) {
-            setError(`Aucune donnée valide trouvée dans le fichier CSV. Colonnes détectées : ${columns.join(', ')}`);
+            setError(`Aucune donnée valide trouvée. Colonnes : ${columns.join(', ')}`);
             return;
           }
 
@@ -95,16 +108,16 @@ export default function GSCIntentionAnalyzer() {
           setError('');
           console.log(`✅ ${parsed.length} requêtes chargées`);
         } catch (err) {
-          setError('Erreur lors du parsing du CSV : ' + (err instanceof Error ? err.message : 'Unknown error'));
+          setError('Erreur parsing CSV : ' + (err instanceof Error ? err.message : 'Unknown error'));
         }
       },
       error: (err) => {
-        setError('Erreur lors de la lecture du fichier : ' + err.message);
+        setError('Erreur lecture fichier : ' + err.message);
       }
     });
   };
 
-  // Étape 2 : Analyser avec Claude
+  // Analyser avec Claude
   const analyzeQueries = async () => {
     if (queries.length === 0) {
       setError('Aucune requête à analyser');
@@ -117,14 +130,8 @@ export default function GSCIntentionAnalyzer() {
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          queries,
-          brand,
-          sector
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ queries, brand, sector })
       });
 
       if (!response.ok) {
@@ -136,16 +143,14 @@ export default function GSCIntentionAnalyzer() {
       setAnalysis(data.analysis);
       setClassifiedQueries(data.classifiedQueries);
       setStep(2);
-      console.log('✅ Analyse complétée', data.analysis);
     } catch (err) {
-      setError('Erreur lors de l\'analyse : ' + (err instanceof Error ? err.message : 'Unknown error'));
-      console.error(err);
+      setError('Erreur analyse : ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Générer la matrice Position × Intention
+  // Générer matrice Position × Intention
   const generateMatrix = () => {
     if (!classifiedQueries.length || !analysis) return [];
 
@@ -170,10 +175,11 @@ export default function GSCIntentionAnalyzer() {
           const avgCTR = queriesInCell.reduce((sum, q) => sum + q.ctr, 0) / queriesInCell.length;
           row[intention.nom] = {
             ctr: avgCTR,
-            count: queriesInCell.length
+            count: queriesInCell.length,
+            queries: queriesInCell
           };
         } else {
-          row[intention.nom] = { ctr: 0, count: 0 };
+          row[intention.nom] = { ctr: 0, count: 0, queries: [] };
         }
       });
 
@@ -181,435 +187,236 @@ export default function GSCIntentionAnalyzer() {
     });
   };
 
-  // Préparer les données pour le graphique de distribution
-  const getIntentionDistribution = () => {
-    if (!analysis) return [];
+  // Détails par intention
+  const getIntentionDetails = (intentionNom: string) => {
+    const intentionQueries = classifiedQueries.filter(q => q.intention === intentionNom);
+    const totalClicks = intentionQueries.reduce((sum, q) => sum + q.clicks, 0);
+    const totalImpressions = intentionQueries.reduce((sum, q) => sum + q.impressions, 0);
 
-    return analysis.intentions.map((intention, idx) => ({
-      name: intention.nom,
-      value: intention.volume,
-      color: COLORS[idx % COLORS.length]
-    }));
+    // IMPORTANT: créer une copie avant de trier pour ne pas modifier l'array original
+    const top5 = [...intentionQueries].sort((a, b) => b.clicks - a.clicks).slice(0, 5);
+
+    const positionDistribution = {
+      'P1-3': intentionQueries.filter(q => q.position >= 1 && q.position <= 3).length,
+      'P4-7': intentionQueries.filter(q => q.position >= 4 && q.position <= 7).length,
+      'P8-10': intentionQueries.filter(q => q.position >= 8 && q.position <= 10).length,
+      'P11+': intentionQueries.filter(q => q.position >= 11).length,
+    };
+
+    const quickWins = intentionQueries.filter(q =>
+      q.position >= 4 && q.position <= 10 && q.impressions > 100
+    );
+
+    return { totalClicks, totalImpressions, top5, positionDistribution, quickWins };
   };
 
-  // Affichage selon l'étape
+  // Styles communs
+  const styles = {
+    title: { fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 },
+    text: { fontFamily: 'Roboto, sans-serif' },
+    button: {
+      background: '#000',
+      color: '#f7c724',
+      border: '2px solid #f7c724',
+      padding: '12px 24px',
+      borderRadius: '8px',
+      fontSize: '14px',
+      fontWeight: 600,
+      cursor: 'pointer',
+      fontFamily: 'JetBrains Mono, monospace',
+      transition: 'all 0.2s'
+    },
+    card: {
+      background: '#1a1a1a',
+      border: '1px solid #333',
+      borderRadius: '12px',
+      padding: '24px'
+    }
+  };
+
+  // ÉTAPE 1: Upload
   if (step === 1) {
     return (
-      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
+      <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#fff' }}>
+        {/* Header avec logo */}
         <div style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          color: 'white',
-          padding: '30px',
-          borderRadius: '12px',
-          marginBottom: '30px'
+          background: '#000',
+          borderBottom: '2px solid #f7c724',
+          padding: '20px 40px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '20px'
         }}>
-          <h1 style={{ margin: '0 0 10px 0', fontSize: '28px' }}>🎯 Analyseur d'Intentions GSC</h1>
-          <p style={{ margin: 0, opacity: 0.9 }}>
-            Découvrez les micro-intentions cachées dans votre trafic Search Console
-          </p>
-        </div>
-
-        {error && (
-          <div style={{
-            background: '#fee',
-            border: '1px solid #fcc',
-            padding: '15px',
-            borderRadius: '8px',
-            marginBottom: '20px',
-            color: '#c00'
-          }}>
-            ⚠️ {error}
-          </div>
-        )}
-
-        <div style={{
-          background: 'white',
-          border: '1px solid #e0e0e0',
-          borderRadius: '12px',
-          padding: '30px',
-          marginBottom: '20px'
-        }}>
-          <h2 style={{ marginTop: 0 }}>📊 Étape 1 : Chargez vos données</h2>
-
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
-              Marque (optionnel)
-            </label>
-            <input
-              type="text"
-              value={brand}
-              onChange={(e) => setBrand(e.target.value)}
-              placeholder="Ex: Nike, Apple, etc."
-              style={{
-                width: '100%',
-                padding: '10px',
-                border: '1px solid #ddd',
-                borderRadius: '6px',
-                fontSize: '14px'
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
-              Secteur (optionnel)
-            </label>
-            <input
-              type="text"
-              value={sector}
-              onChange={(e) => setSector(e.target.value)}
-              placeholder="Ex: E-commerce, SaaS, etc."
-              style={{
-                width: '100%',
-                padding: '10px',
-                border: '1px solid #ddd',
-                borderRadius: '6px',
-                fontSize: '14px'
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
-              📁 Export CSV Google Search Console
-            </label>
-            <input
-              type="file"
-              accept=".csv"
-              onChange={handleFileUpload}
-              style={{
-                width: '100%',
-                padding: '10px',
-                border: '2px dashed #ddd',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
-            />
-            <p style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
-              💡 Exportez depuis GSC : Performance &gt; Requêtes &gt; Exporter
+          <img src={LOGO_SRC} alt="Logo" style={{ height: '60px' }} />
+          <div>
+            <h1 style={{ ...styles.title, margin: 0, fontSize: '28px', color: '#f7c724' }}>
+              GSC INTENTION ANALYZER
+            </h1>
+            <p style={{ ...styles.text, margin: '4px 0 0 0', fontSize: '14px', color: '#999' }}>
+              Découvrez les micro-intentions cachées dans votre trafic Search Console
             </p>
           </div>
+        </div>
 
-          {queries.length > 0 && (
+        <div style={{ maxWidth: '800px', margin: '0 auto', padding: '40px 20px' }}>
+          {error && (
             <div style={{
-              background: '#f0f9ff',
-              border: '1px solid #bfdbfe',
-              padding: '15px',
-              borderRadius: '8px',
+              ...styles.card,
+              background: '#2a1a1a',
+              border: '1px solid #c00',
               marginBottom: '20px'
             }}>
-              ✅ <strong>{queries.length} requêtes</strong> chargées
-              <div style={{ fontSize: '12px', marginTop: '5px', color: '#666' }}>
-                Total clics : {queries.reduce((sum, q) => sum + q.clicks, 0).toLocaleString()} |
-                Total impressions : {queries.reduce((sum, q) => sum + q.impressions, 0).toLocaleString()}
-              </div>
+              ⚠️ {error}
             </div>
           )}
 
-          <button
-            onClick={analyzeQueries}
-            disabled={queries.length === 0 || isLoading}
-            style={{
-              width: '100%',
-              padding: '15px',
-              background: queries.length === 0 ? '#ccc' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '16px',
-              fontWeight: 600,
-              cursor: queries.length === 0 ? 'not-allowed' : 'pointer',
-              transition: 'transform 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              if (queries.length > 0) {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            {isLoading ? '🔄 Analyse en cours...' : '🚀 Analyser les intentions'}
-          </button>
-        </div>
+          <div style={{ ...styles.card, marginBottom: '20px' }}>
+            <h2 style={{ ...styles.title, marginTop: 0, color: '#f7c724' }}>
+              📊 ÉTAPE 1 : CHARGEZ VOS DONNÉES
+            </h2>
 
-        <div style={{
-          background: '#fefce8',
-          border: '1px solid #fde047',
-          padding: '15px',
-          borderRadius: '8px',
-          fontSize: '14px'
-        }}>
-          <strong>💡 Ce que fait cet outil :</strong>
-          <ul style={{ marginBottom: 0, paddingLeft: '20px' }}>
-            <li>Découvre automatiquement les intentions dans vos requêtes (pas de catégories fixes)</li>
-            <li>Génère une matrice Position × Intention avec CTR</li>
-            <li>Détecte les patterns linguistiques</li>
-            <li>Vous guide vers les 5 requêtes à analyser manuellement dans Google</li>
-          </ul>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+                Marque (optionnel)
+              </label>
+              <input
+                type="text"
+                value={brand}
+                onChange={(e) => setBrand(e.target.value)}
+                placeholder="Ex: Nike, Apple, etc."
+                style={{
+                  ...styles.text,
+                  width: '100%',
+                  padding: '12px',
+                  background: '#0a0a0a',
+                  border: '1px solid #333',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  fontSize: '14px'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+                Secteur (optionnel)
+              </label>
+              <input
+                type="text"
+                value={sector}
+                onChange={(e) => setSector(e.target.value)}
+                placeholder="Ex: E-commerce, SaaS, etc."
+                style={{
+                  ...styles.text,
+                  width: '100%',
+                  padding: '12px',
+                  background: '#0a0a0a',
+                  border: '1px solid #333',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  fontSize: '14px'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+                📁 Export CSV Google Search Console
+              </label>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                style={{
+                  ...styles.text,
+                  width: '100%',
+                  padding: '12px',
+                  background: '#0a0a0a',
+                  border: '2px dashed #333',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  color: '#999'
+                }}
+              />
+              <p style={{ ...styles.text, fontSize: '12px', color: '#666', marginTop: '8px' }}>
+                💡 Exportez depuis GSC : Performance → Requêtes → Exporter
+              </p>
+            </div>
+
+            {queries.length > 0 && (
+              <div style={{
+                background: '#0f2a1a',
+                border: '1px solid #2a5a3a',
+                padding: '15px',
+                borderRadius: '8px',
+                marginBottom: '20px'
+              }}>
+                <div style={{ ...styles.text }}>
+                  ✅ <strong>{queries.length} requêtes</strong> chargées
+                </div>
+                <div style={{ ...styles.text, fontSize: '12px', marginTop: '5px', color: '#999' }}>
+                  Total clics : {queries.reduce((sum, q) => sum + q.clicks, 0).toLocaleString()} |
+                  Total impressions : {queries.reduce((sum, q) => sum + q.impressions, 0).toLocaleString()}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={analyzeQueries}
+              disabled={queries.length === 0 || isLoading}
+              style={{
+                ...styles.button,
+                width: '100%',
+                padding: '16px',
+                opacity: queries.length === 0 ? 0.5 : 1,
+                cursor: queries.length === 0 ? 'not-allowed' : 'pointer'
+              }}
+              onMouseEnter={(e) => {
+                if (queries.length > 0) {
+                  e.currentTarget.style.background = '#f7c724';
+                  e.currentTarget.style.color = '#000';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (queries.length > 0) {
+                  e.currentTarget.style.background = '#000';
+                  e.currentTarget.style.color = '#f7c724';
+                }
+              }}
+            >
+              {isLoading ? '🔄 ANALYSE EN COURS...' : '🚀 ANALYSER LES INTENTIONS'}
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Étape 2 : Résultats
+  // ÉTAPE 2 : Résultats
   if (step === 2 && analysis) {
     const matrix = generateMatrix();
-    const distribution = getIntentionDistribution();
 
     return (
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '20px' }}>
+      <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#fff' }}>
+        {/* Header avec logo */}
         <div style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          color: 'white',
-          padding: '30px',
-          borderRadius: '12px',
-          marginBottom: '30px'
+          background: '#000',
+          borderBottom: '2px solid #f7c724',
+          padding: '20px 40px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
         }}>
-          <h1 style={{ margin: '0 0 10px 0', fontSize: '28px' }}>✅ Analyse terminée</h1>
-          <p style={{ margin: 0, opacity: 0.9 }}>
-            {classifiedQueries.length} requêtes classifiées • {analysis.intentions.length} intentions découvertes
-          </p>
-        </div>
-
-        {/* Insights stratégiques */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '30px' }}>
-          <div style={{ background: '#dcfce7', border: '1px solid #86efac', padding: '20px', borderRadius: '12px' }}>
-            <div style={{ fontSize: '24px', marginBottom: '10px' }}>🎯</div>
-            <h3 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#166534' }}>OPPORTUNITÉ PRINCIPALE</h3>
-            <p style={{ margin: 0, fontSize: '14px' }}>{analysis.insights.biggest_opportunity}</p>
-          </div>
-          <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', padding: '20px', borderRadius: '12px' }}>
-            <div style={{ fontSize: '24px', marginBottom: '10px' }}>⚠️</div>
-            <h3 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#991b1b' }}>FRICTION PRINCIPALE</h3>
-            <p style={{ margin: 0, fontSize: '14px' }}>{analysis.insights.biggest_friction}</p>
-          </div>
-          <div style={{ background: '#fef3c7', border: '1px solid #fde047', padding: '20px', borderRadius: '12px' }}>
-            <div style={{ fontSize: '24px', marginBottom: '10px' }}>⚡</div>
-            <h3 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#854d0e' }}>QUICK WIN</h3>
-            <p style={{ margin: 0, fontSize: '14px' }}>{analysis.insights.quick_win}</p>
-          </div>
-        </div>
-
-        {/* Distribution des intentions */}
-        <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '12px', padding: '30px', marginBottom: '30px' }}>
-          <h2 style={{ marginTop: 0 }}>📊 Distribution des intentions</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <img src={LOGO_SRC} alt="Logo" style={{ height: '60px' }} />
             <div>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={distribution}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={100}
-                    label={(entry) => `${entry.name} (${entry.value})`}
-                  >
-                    {distribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              <h1 style={{ ...styles.title, margin: 0, fontSize: '28px', color: '#f7c724' }}>
+                ✅ ANALYSE TERMINÉE
+              </h1>
+              <p style={{ ...styles.text, margin: '4px 0 0 0', fontSize: '14px', color: '#999' }}>
+                {classifiedQueries.length} requêtes • {analysis.intentions.length} intentions
+              </p>
             </div>
-            <div>
-              {analysis.intentions.map((intention, idx) => (
-                <div key={idx} style={{
-                  padding: '12px',
-                  background: '#f9fafb',
-                  borderLeft: `4px solid ${COLORS[idx % COLORS.length]}`,
-                  marginBottom: '10px',
-                  borderRadius: '4px'
-                }}>
-                  <strong style={{ color: COLORS[idx % COLORS.length] }}>{intention.nom}</strong>
-                  <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                    {intention.description}
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
-                    📊 {intention.volume} requêtes • CTR: {(intention.ctr_moyen * 100).toFixed(1)}% • Pos: {intention.position_moyenne.toFixed(1)}
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
-                    🔍 Signal: <em>{intention.signal_linguistique}</em>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Matrice Position × Intention */}
-        <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '12px', padding: '30px', marginBottom: '30px' }}>
-          <h2 style={{ marginTop: 0 }}>🎯 Matrice Position × Intention (CTR %)</h2>
-          <p style={{ color: '#666', fontSize: '14px' }}>
-            Cette matrice montre le CTR moyen pour chaque combinaison Position/Intention dans VOS données
-          </p>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-              <thead>
-                <tr>
-                  <th style={{ padding: '12px', background: '#f3f4f6', border: '1px solid #e5e7eb', textAlign: 'left' }}>
-                    Position
-                  </th>
-                  {analysis.intentions.map((intention, idx) => (
-                    <th key={idx} style={{
-                      padding: '12px',
-                      background: '#f3f4f6',
-                      border: '1px solid #e5e7eb',
-                      textAlign: 'center',
-                      color: COLORS[idx % COLORS.length]
-                    }}>
-                      {intention.nom}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {matrix.map((row, rowIdx) => (
-                  <tr key={rowIdx}>
-                    <td style={{ padding: '12px', border: '1px solid #e5e7eb', fontWeight: 600 }}>
-                      {row.position}
-                    </td>
-                    {analysis.intentions.map((intention, colIdx) => {
-                      const cellData = row[intention.nom];
-                      const ctrPercent = (cellData.ctr * 100).toFixed(1);
-                      const heatIntensity = Math.min(cellData.ctr * 10, 1);
-
-                      return (
-                        <td key={colIdx} style={{
-                          padding: '12px',
-                          border: '1px solid #e5e7eb',
-                          textAlign: 'center',
-                          background: cellData.count > 0
-                            ? `rgba(34, 197, 94, ${heatIntensity})`
-                            : '#f9fafb'
-                        }}>
-                          {cellData.count > 0 ? (
-                            <>
-                              <div style={{ fontWeight: 600 }}>{ctrPercent}%</div>
-                              <div style={{ fontSize: '10px', color: '#666' }}>
-                                ({cellData.count} req)
-                              </div>
-                            </>
-                          ) : (
-                            <span style={{ color: '#ccc' }}>-</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Patterns linguistiques */}
-        <div style={{ background: 'white', border: '1px solid #e0e0e0', borderRadius: '12px', padding: '30px', marginBottom: '30px' }}>
-          <h2 style={{ marginTop: 0 }}>🔤 Patterns linguistiques détectés</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
-            {analysis.patterns_linguistiques.mots_recurrents.length > 0 && (
-              <div>
-                <h3 style={{ fontSize: '14px', color: '#667eea' }}>Mots récurrents</h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {analysis.patterns_linguistiques.mots_recurrents.map((mot, idx) => (
-                    <span key={idx} style={{
-                      background: '#ede9fe',
-                      color: '#5b21b6',
-                      padding: '4px 10px',
-                      borderRadius: '12px',
-                      fontSize: '12px'
-                    }}>
-                      {mot}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {analysis.patterns_linguistiques.structures_questions.length > 0 && (
-              <div>
-                <h3 style={{ fontSize: '14px', color: '#667eea' }}>Structures de questions</h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {analysis.patterns_linguistiques.structures_questions.map((structure, idx) => (
-                    <span key={idx} style={{
-                      background: '#dbeafe',
-                      color: '#1e40af',
-                      padding: '4px 10px',
-                      borderRadius: '12px',
-                      fontSize: '12px'
-                    }}>
-                      {structure}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {analysis.patterns_linguistiques.modificateurs_temporels.length > 0 && (
-              <div>
-                <h3 style={{ fontSize: '14px', color: '#667eea' }}>Modificateurs temporels</h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {analysis.patterns_linguistiques.modificateurs_temporels.map((mod, idx) => (
-                    <span key={idx} style={{
-                      background: '#fef3c7',
-                      color: '#92400e',
-                      padding: '4px 10px',
-                      borderRadius: '12px',
-                      fontSize: '12px'
-                    }}>
-                      {mod}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {analysis.patterns_linguistiques.termes_comparatifs.length > 0 && (
-              <div>
-                <h3 style={{ fontSize: '14px', color: '#667eea' }}>Termes comparatifs</h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {analysis.patterns_linguistiques.termes_comparatifs.map((terme, idx) => (
-                    <span key={idx} style={{
-                      background: '#fce7f3',
-                      color: '#9f1239',
-                      padding: '4px 10px',
-                      borderRadius: '12px',
-                      fontSize: '12px'
-                    }}>
-                      {terme}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Prochaines étapes */}
-        <div style={{
-          background: 'linear-gradient(135deg, #fef3c7 0%, #fde047 100%)',
-          border: '2px solid #facc15',
-          padding: '30px',
-          borderRadius: '12px'
-        }}>
-          <h2 style={{ marginTop: 0, fontSize: '20px' }}>🎯 Prochaine étape : Analyse manuelle SERP</h2>
-          <p style={{ marginBottom: '20px' }}>
-            Maintenant que vous avez identifié les intentions, sélectionnez <strong>5 requêtes stratégiques</strong> et
-            analysez-les manuellement dans Google pour comprendre les SERP et affiner votre stratégie de contenu.
-          </p>
-          <div style={{ background: 'white', padding: '15px', borderRadius: '8px', marginBottom: '15px' }}>
-            <strong>Recommandations de requêtes à analyser :</strong>
-            <ol style={{ marginBottom: 0, paddingLeft: '20px' }}>
-              {analysis.intentions.slice(0, 5).map((intention, idx) => (
-                <li key={idx}>
-                  <strong>{intention.nom}</strong> : {intention.exemples[0]}
-                  <div style={{ fontSize: '12px', color: '#666' }}>
-                    → {intention.description}
-                  </div>
-                </li>
-              ))}
-            </ol>
           </div>
           <button
             onClick={() => {
@@ -618,19 +425,371 @@ export default function GSCIntentionAnalyzer() {
               setClassifiedQueries([]);
               setAnalysis(null);
             }}
-            style={{
-              padding: '12px 24px',
-              background: 'white',
-              color: '#667eea',
-              border: '2px solid #667eea',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
+            style={styles.button}
           >
-            ← Nouvelle analyse
+            ← NOUVELLE ANALYSE
           </button>
+        </div>
+
+        <div style={{ maxWidth: '1600px', margin: '0 auto', padding: '40px 20px' }}>
+          {/* Insights */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+            <div style={{ ...styles.card, borderLeft: '4px solid #22c55e' }}>
+              <div style={{ fontSize: '32px', marginBottom: '10px' }}>🎯</div>
+              <h3 style={{ ...styles.title, margin: '0 0 10px 0', fontSize: '14px', color: '#22c55e' }}>
+                OPPORTUNITÉ PRINCIPALE
+              </h3>
+              <p style={{ ...styles.text, margin: 0, fontSize: '14px' }}>{analysis.insights.biggest_opportunity}</p>
+            </div>
+            <div style={{ ...styles.card, borderLeft: '4px solid #ef4444' }}>
+              <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚠️</div>
+              <h3 style={{ ...styles.title, margin: '0 0 10px 0', fontSize: '14px', color: '#ef4444' }}>
+                FRICTION PRINCIPALE
+              </h3>
+              <p style={{ ...styles.text, margin: 0, fontSize: '14px' }}>{analysis.insights.biggest_friction}</p>
+            </div>
+            <div style={{ ...styles.card, borderLeft: '4px solid #f7c724' }}>
+              <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚡</div>
+              <h3 style={{ ...styles.title, margin: '0 0 10px 0', fontSize: '14px', color: '#f7c724' }}>
+                QUICK WIN
+              </h3>
+              <p style={{ ...styles.text, margin: 0, fontSize: '14px' }}>{analysis.insights.quick_win}</p>
+            </div>
+          </div>
+
+          {/* Détails par intention (accordéon) */}
+          <div style={{ ...styles.card, marginBottom: '30px' }}>
+            <h2 style={{ ...styles.title, marginTop: 0, color: '#f7c724' }}>
+              📊 DÉTAILS PAR INTENTION
+            </h2>
+            {analysis.intentions.map((intention, idx) => {
+              const details = getIntentionDetails(intention.nom);
+              const isExpanded = expandedIntention === intention.nom;
+
+              return (
+                <div key={idx} style={{
+                  background: '#0a0a0a',
+                  border: `1px solid ${COLORS[idx % COLORS.length]}`,
+                  borderRadius: '8px',
+                  marginBottom: '12px',
+                  overflow: 'hidden'
+                }}>
+                  <div
+                    onClick={() => setExpandedIntention(isExpanded ? null : intention.nom)}
+                    style={{
+                      padding: '16px',
+                      cursor: 'pointer',
+                      borderLeft: `4px solid ${COLORS[idx % COLORS.length]}`,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      background: isExpanded ? '#1a1a1a' : 'transparent'
+                    }}
+                  >
+                    <div>
+                      <strong style={{ ...styles.title, color: COLORS[idx % COLORS.length], fontSize: '16px' }}>
+                        {intention.nom}
+                      </strong>
+                      <div style={{ ...styles.text, fontSize: '12px', color: '#999', marginTop: '4px' }}>
+                        {intention.description}
+                      </div>
+                      <div style={{ ...styles.text, fontSize: '11px', color: '#666', marginTop: '4px' }}>
+                        📊 {intention.volume} req • CTR: {(intention.ctr_moyen * 100).toFixed(1)}% • Pos: {intention.position_moyenne.toFixed(1)}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '20px' }}>{isExpanded ? '▼' : '▶'}</div>
+                  </div>
+
+                  {isExpanded && (
+                    <div style={{ padding: '16px', borderTop: '1px solid #333' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+                        <div>
+                          <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>Volume total</div>
+                          <div style={{ ...styles.title, fontSize: '20px', color: '#f7c724' }}>
+                            {details.totalClicks} clics / {details.totalImpressions} imp
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>Distribution positions</div>
+                          <div style={{ ...styles.text, fontSize: '12px', marginTop: '4px' }}>
+                            P1-3: {details.positionDistribution['P1-3']} |
+                            P4-7: {details.positionDistribution['P4-7']} |
+                            P8-10: {details.positionDistribution['P8-10']} |
+                            P11+: {details.positionDistribution['P11+']}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ marginBottom: '20px' }}>
+                        <div style={{ ...styles.text, fontSize: '12px', color: '#999', marginBottom: '8px' }}>
+                          Top 5 requêtes (par clics)
+                        </div>
+                        {details.top5.map((q, i) => (
+                          <div key={i} style={{
+                            ...styles.text,
+                            fontSize: '11px',
+                            padding: '8px',
+                            background: i % 2 === 0 ? '#0a0a0a' : '#1a1a1a',
+                            borderRadius: '4px',
+                            marginBottom: '4px'
+                          }}>
+                            <strong>"{q.query}"</strong> |
+                            Pos: {q.position.toFixed(1)} |
+                            CTR: {(q.ctr * 100).toFixed(1)}% |
+                            Clics: {q.clicks}
+                          </div>
+                        ))}
+                      </div>
+
+                      {details.quickWins.length > 0 && (
+                        <div>
+                          <div style={{ ...styles.text, fontSize: '12px', color: '#f7c724', marginBottom: '8px' }}>
+                            ⚡ Quick wins ({details.quickWins.length} requêtes en P4-10 avec &gt;100 imp)
+                          </div>
+                          {details.quickWins.slice(0, 3).map((q, i) => (
+                            <div key={i} style={{
+                              ...styles.text,
+                              fontSize: '11px',
+                              padding: '8px',
+                              background: '#2a1a0a',
+                              borderRadius: '4px',
+                              marginBottom: '4px'
+                            }}>
+                              <strong>"{q.query}"</strong> |
+                              Pos: {q.position.toFixed(1)} |
+                              Imp: {q.impressions}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Matrice interactive */}
+          <div style={{ ...styles.card, marginBottom: '30px' }}>
+            <h2 style={{ ...styles.title, marginTop: 0, color: '#f7c724' }}>
+              🎯 MATRICE POSITION × INTENTION (CTR %)
+            </h2>
+            <p style={{ ...styles.text, color: '#999', fontSize: '14px', marginBottom: '12px' }}>
+              Cliquez sur une cellule pour voir les requêtes détaillées
+            </p>
+            <div style={{
+              background: '#2a1a0a',
+              border: '1px solid #f7c724',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '20px'
+            }}>
+              <div style={{ ...styles.text, fontSize: '13px', color: '#fdf13e', marginBottom: '6px' }}>
+                ⚠️ <strong>Disclaimer</strong>
+              </div>
+              <div style={{ ...styles.text, fontSize: '12px', color: '#ccc', lineHeight: '1.5' }}>
+                Les positions moyennes de la Search Console <strong>ne reflètent pas l'ensemble de la SERP</strong> car elles excluent les fonctionnalités SERP (featured snippets, PAA, local pack, images, etc.).
+                Ces données constituent néanmoins un <strong>bon premier indicateur</strong> pour estimer le trafic potentiel et identifier les opportunités d'optimisation.
+                Pour une analyse complète, croisez avec des données externes (Semrush, Ahrefs, etc.).
+              </div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr>
+                    <th style={{
+                      ...styles.title,
+                      padding: '12px',
+                      background: '#1a1a1a',
+                      border: '1px solid #333',
+                      textAlign: 'left',
+                      color: '#f7c724'
+                    }}>
+                      Position
+                    </th>
+                    {analysis.intentions.map((intention, idx) => (
+                      <th key={idx} style={{
+                        ...styles.title,
+                        padding: '12px',
+                        background: '#1a1a1a',
+                        border: '1px solid #333',
+                        textAlign: 'center',
+                        color: COLORS[idx % COLORS.length],
+                        fontSize: '11px'
+                      }}>
+                        {intention.nom}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {matrix.map((row, rowIdx) => (
+                    <tr key={rowIdx} style={{ background: rowIdx % 2 === 0 ? '#0a0a0a' : '#121212' }}>
+                      <td style={{
+                        ...styles.title,
+                        padding: '12px',
+                        border: '1px solid #333',
+                        fontWeight: 600,
+                        color: '#f7c724'
+                      }}>
+                        {row.position}
+                      </td>
+                      {analysis.intentions.map((intention, colIdx) => {
+                        const cellData = row[intention.nom];
+                        const ctrPercent = (cellData.ctr * 100).toFixed(1);
+                        const isLowData = cellData.count > 0 && cellData.count < 5;
+
+                        return (
+                          <td
+                            key={colIdx}
+                            onClick={() => {
+                              if (cellData.count > 0) {
+                                setSelectedCell({
+                                  intention: intention.nom,
+                                  posGroup: row.position,
+                                  queries: cellData.queries
+                                });
+                              }
+                            }}
+                            style={{
+                              ...styles.text,
+                              padding: '12px',
+                              border: '1px solid #333',
+                              textAlign: 'center',
+                              cursor: cellData.count > 0 ? 'pointer' : 'default',
+                              background: cellData.count > 0
+                                ? `rgba(247, 199, 36, ${Math.min(cellData.ctr * 2, 0.3)})`
+                                : '#1a1a1a',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (cellData.count > 0) {
+                                e.currentTarget.style.background = `rgba(247, 199, 36, ${Math.min(cellData.ctr * 2, 0.5)})`;
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (cellData.count > 0) {
+                                e.currentTarget.style.background = `rgba(247, 199, 36, ${Math.min(cellData.ctr * 2, 0.3)})`;
+                              }
+                            }}
+                          >
+                            {cellData.count > 0 ? (
+                              <>
+                                <div style={{ fontWeight: 600, fontSize: '14px' }}>{ctrPercent}%</div>
+                                <div style={{ fontSize: '10px', color: '#999' }}>
+                                  ({cellData.count} req)
+                                  {isLowData && <span style={{ color: '#f7c724' }}> ⚠️</span>}
+                                </div>
+                              </>
+                            ) : (
+                              <span style={{ color: '#666' }}>-</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Modal drill-down */}
+          {selectedCell && (
+            <div
+              onClick={() => setSelectedCell(null)}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0,0,0,0.9)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000,
+                padding: '20px'
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  ...styles.card,
+                  maxWidth: '900px',
+                  width: '100%',
+                  maxHeight: '80vh',
+                  overflowY: 'auto',
+                  border: '2px solid #f7c724'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <div>
+                    <h2 style={{ ...styles.title, margin: 0, color: '#f7c724' }}>
+                      {selectedCell.intention} • {selectedCell.posGroup}
+                    </h2>
+                    <p style={{ ...styles.text, margin: '4px 0 0 0', fontSize: '14px', color: '#999' }}>
+                      {selectedCell.queries.length} requêtes
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedCell(null)}
+                    style={{
+                      ...styles.button,
+                      padding: '8px 16px'
+                    }}
+                  >
+                    ✕ Fermer
+                  </button>
+                </div>
+
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...styles.title, padding: '10px', background: '#1a1a1a', border: '1px solid #333', textAlign: 'left' }}>
+                          Requête
+                        </th>
+                        <th style={{ ...styles.title, padding: '10px', background: '#1a1a1a', border: '1px solid #333', textAlign: 'center' }}>
+                          Position
+                        </th>
+                        <th style={{ ...styles.title, padding: '10px', background: '#1a1a1a', border: '1px solid #333', textAlign: 'center' }}>
+                          CTR
+                        </th>
+                        <th style={{ ...styles.title, padding: '10px', background: '#1a1a1a', border: '1px solid #333', textAlign: 'center' }}>
+                          Clics
+                        </th>
+                        <th style={{ ...styles.title, padding: '10px', background: '#1a1a1a', border: '1px solid #333', textAlign: 'center' }}>
+                          Impressions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedCell.queries.map((q, i) => (
+                        <tr key={i} style={{ background: i % 2 === 0 ? '#0a0a0a' : '#121212' }}>
+                          <td style={{ ...styles.text, padding: '10px', border: '1px solid #333' }}>
+                            {q.query}
+                          </td>
+                          <td style={{ ...styles.text, padding: '10px', border: '1px solid #333', textAlign: 'center' }}>
+                            {q.position.toFixed(1)}
+                          </td>
+                          <td style={{ ...styles.text, padding: '10px', border: '1px solid #333', textAlign: 'center' }}>
+                            {(q.ctr * 100).toFixed(1)}%
+                          </td>
+                          <td style={{ ...styles.text, padding: '10px', border: '1px solid #333', textAlign: 'center' }}>
+                            {q.clicks}
+                          </td>
+                          <td style={{ ...styles.text, padding: '10px', border: '1px solid #333', textAlign: 'center' }}>
+                            {q.impressions}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

@@ -58,10 +58,12 @@ ANALYSE REQUISE
    - Modificateurs temporels (2024, 2025)
    - Termes comparatifs (vs, ou, meilleur)
 
-3. **INSIGHTS STRATÉGIQUES**
-   - biggest_opportunity : L'opportunité principale détectée
-   - biggest_friction : La friction principale détectée
-   - quick_win : Action rapide recommandée
+3. **INSIGHTS STRATÉGIQUES** (DÉTAILLÉS ET ACTIONNABLES)
+   - biggest_opportunity : Décris EN DÉTAIL (2-3 phrases minimum) l'opportunité principale avec des EXEMPLES CONCRETS de requêtes et des CHIFFRES précis (volume, position, CTR). Explique POURQUOI c'est une opportunité et COMMENT la saisir.
+   - biggest_friction : Décris EN DÉTAIL (2-3 phrases minimum) la friction principale avec des EXEMPLES CONCRETS de requêtes et des CHIFFRES précis. Explique POURQUOI c'est une friction et COMMENT la résoudre.
+   - quick_win : Décris EN DÉTAIL (2-3 phrases minimum) une action rapide et concrète à mettre en place IMMÉDIATEMENT, avec des EXEMPLES précis de requêtes concernées et l'impact attendu.
+
+IMPORTANT : Les insights doivent être RICHES, DÉTAILLÉS et contenir des DONNÉES CHIFFRÉES issues de l'analyse (exemples de requêtes, volumes, positions, CTR).
 
 FORMAT JSON STRICT :
 {
@@ -83,14 +85,14 @@ FORMAT JSON STRICT :
     "termes_comparatifs": ["string"]
   },
   "insights": {
-    "biggest_opportunity": "string",
-    "biggest_friction": "string",
-    "quick_win": "string"
+    "biggest_opportunity": "string (2-3 phrases détaillées avec exemples et chiffres)",
+    "biggest_friction": "string (2-3 phrases détaillées avec exemples et chiffres)",
+    "quick_win": "string (2-3 phrases détaillées avec action concrète)"
   }
 }`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-5',
       max_tokens: 4096,
       messages: [
         {

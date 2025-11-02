@@ -64,6 +64,11 @@ export default function GSCIntentionAnalyzer() {
       skipEmptyLines: true,
       complete: (results) => {
         try {
+          // Debug : afficher les colonnes détectées
+          const firstRow = results.data[0] as any;
+          const columns = firstRow ? Object.keys(firstRow) : [];
+          console.log('🔍 Colonnes détectées dans le CSV:', columns);
+
           const parsed = results.data.map((row: any) => {
             // Gérer différents formats d'export GSC
             const query = row['Top queries'] || row['Requête'] || row['Query'] || row['query'] || '';
@@ -82,7 +87,7 @@ export default function GSCIntentionAnalyzer() {
           }).filter(q => q.query && q.impressions > 0);
 
           if (parsed.length === 0) {
-            setError('Aucune donnée valide trouvée dans le fichier CSV');
+            setError(`Aucune donnée valide trouvée dans le fichier CSV. Colonnes détectées : ${columns.join(', ')}`);
             return;
           }
 

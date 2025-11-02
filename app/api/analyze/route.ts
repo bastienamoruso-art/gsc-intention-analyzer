@@ -136,7 +136,7 @@ FORMAT JSON STRICT :
         for (const exemple of intention.exemples) {
           const exempleMots = exemple.toLowerCase().split(' ');
           const queryMots = queryLower.split(' ');
-          const motsCommuns = exempleMots.filter(mot => queryMots.includes(mot)).length;
+          const motsCommuns = exempleMots.filter((mot: string) => queryMots.includes(mot)).length;
           confidence += (motsCommuns / Math.max(exempleMots.length, queryMots.length)) * 0.6;
         }
 

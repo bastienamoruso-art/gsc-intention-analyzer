@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'GSC Intention Analyzer - kamak',
-  description: 'Découvrez les micro-intentions cachées dans votre trafic Google Search Console',
+  description: 'Découvrez les micro-intentions cachées dans votre trafic Google Search Console - by kamak',
 };
 
 export default function RootLayout({

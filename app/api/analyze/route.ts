@@ -63,7 +63,11 @@ ANALYSE REQUISE
    - biggest_friction : Décris EN DÉTAIL (2-3 phrases minimum) la friction principale avec des EXEMPLES CONCRETS de requêtes et des CHIFFRES précis. Explique POURQUOI c'est une friction et COMMENT la résoudre.
    - quick_win : Décris EN DÉTAIL (2-3 phrases minimum) une action rapide et concrète à mettre en place IMMÉDIATEMENT, avec des EXEMPLES précis de requêtes concernées et l'impact attendu.
 
-IMPORTANT : Les insights doivent être RICHES, DÉTAILLÉS et contenir des DONNÉES CHIFFRÉES issues de l'analyse (exemples de requêtes, volumes, positions, CTR).
+CONTRAINTES IMPORTANTES :
+- NE JAMAIS recommander de capitaliser sur des fautes d'orthographe (ex: "look academy" vs "lock academy") - c'est une pratique black-hat interdite
+- NE JAMAIS suggérer de créer des URLs spécifiques (ex: "/escape-game-paris-2-joueurs") sans savoir si elles existent déjà - reste sur des recommandations stratégiques de haut niveau
+- Privilégier les recommandations WHITE-HAT : optimisation de contenu existant, amélioration de la pertinence, structure de l'information
+- Les insights doivent être RICHES, DÉTAILLÉS et contenir des DONNÉES CHIFFRÉES issues de l'analyse (exemples de requêtes, volumes, positions, CTR)
 
 FORMAT JSON STRICT :
 {

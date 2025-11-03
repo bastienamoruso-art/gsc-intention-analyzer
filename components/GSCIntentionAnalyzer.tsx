@@ -55,6 +55,17 @@ export default function GSCIntentionAnalyzer() {
   const [error, setError] = useState<string>('');
   const [selectedCell, setSelectedCell] = useState<{ intention: string; posGroup: string; queries: QueryData[] } | null>(null);
   const [expandedIntention, setExpandedIntention] = useState<string | null>(null);
+  const [showEmailPopup, setShowEmailPopup] = useState<boolean>(false);
+
+  // Afficher la popup 5 secondes après les résultats
+  React.useEffect(() => {
+    if (step === 2 && analysis) {
+      const timer = setTimeout(() => {
+        setShowEmailPopup(true);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [step, analysis]);
 
   // Upload CSV
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -919,6 +930,98 @@ export default function GSCIntentionAnalyzer() {
             </div>
           )}
         </div>
+
+        {/* Popup Email Substack */}
+        {showEmailPopup && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.85)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+              padding: '20px'
+            }}
+            onClick={() => setShowEmailPopup(false)}
+          >
+            <div
+              style={{
+                background: '#1a1a1a',
+                border: '2px solid #f7c724',
+                borderRadius: '12px',
+                padding: '30px',
+                maxWidth: '540px',
+                width: '100%',
+                position: 'relative',
+                boxShadow: '0 8px 32px rgba(247, 199, 36, 0.3)'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setShowEmailPopup(false)}
+                style={{
+                  position: 'absolute',
+                  top: '15px',
+                  right: '15px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#999',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  padding: '5px 10px',
+                  lineHeight: 1
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
+                onMouseLeave={(e) => e.currentTarget.style.color = '#999'}
+              >
+                ×
+              </button>
+
+              <h3 style={{
+                ...styles.title,
+                color: '#f7c724',
+                fontSize: '22px',
+                marginTop: 0,
+                marginBottom: '15px',
+                textAlign: 'center'
+              }}>
+                🎉 Envie de plus d'outils SEO ?
+              </h3>
+
+              <p style={{
+                ...styles.text,
+                color: '#ccc',
+                fontSize: '15px',
+                marginBottom: '25px',
+                textAlign: 'center'
+              }}>
+                Reçois mes prochains outils gratuits en avant-première<br />
+                <span style={{ color: '#999', fontSize: '13px' }}>Pas de spam - que du concret</span>
+              </p>
+
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <iframe
+                  src="https://bastienamoruso.substack.com/embed"
+                  width="480"
+                  height="320"
+                  style={{
+                    border: '1px solid #333',
+                    background: 'white',
+                    borderRadius: '8px',
+                    maxWidth: '100%'
+                  }}
+                  frameBorder="0"
+                  scrolling="no"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         <Footer />
       </div>

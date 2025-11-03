@@ -43,6 +43,82 @@ export async function POST(request: NextRequest) {
     }));
 
     // ========================================
+    // CALCUL DES STOPWORDS DYNAMIQUES
+    // ========================================
+    // Identifier les mots trop fréquents dans le dataset
+    // (ex: "velo" apparaît dans 80% des queries d'un site de vélo)
+    // Ces mots seront EXCLUS du calcul de similarité pour éviter faux positifs
+
+    const wordFrequency = new Map<string, number>();
+    const totalQueries = queryData.length;
+
+    queryData.forEach(q => {
+      const words = q.query.toLowerCase().split(/\s+/);
+      const uniqueWords = new Set(words); // Compter 1 fois par query
+
+      uniqueWords.forEach(word => {
+        // Ignorer mots < 3 lettres et nombres purs
+        if (word.length > 2 && !/^\d+$/.test(word)) {
+          wordFrequency.set(word, (wordFrequency.get(word) || 0) + 1);
+        }
+      });
+    });
+
+    // Exclure les TOP 5 mots les plus fréquents (approche générique)
+    // Fonctionne pour tous types de sites : niche, large, SaaS, e-commerce, etc.
+    const sortedWords = Array.from(wordFrequency.entries())
+      .sort((a, b) => b[1] - a[1]); // Trier par fréquence décroissante
+
+    const topN = 5; // Nombre de stopwords à exclure
+    const dynamicStopwords = new Set<string>();
+
+    for (let i = 0; i < Math.min(topN, sortedWords.length); i++) {
+      const [word, count] = sortedWords[i];
+      dynamicStopwords.add(word);
+    }
+
+    console.log('Dynamic stopwords detected:',
+      Array.from(dynamicStopwords).map((w, i) => `${w} (${sortedWords[i][1]})`).join(', ')
+    );
+
+    // ========================================
+    // FONCTION HELPER : Calcul de confiance avec stopwords filtrés
+    // ========================================
+    const calculateConfidence = (queryLower: string, intention: any): number => {
+      let confidence = 0;
+
+      // 1. Vérifier signaux linguistiques (NON filtrés - ce sont des signaux intentionnels)
+      if (intention.signal_linguistique) {
+        const signals = intention.signal_linguistique.toLowerCase().split(/[,;]/);
+        for (const signal of signals) {
+          if (queryLower.includes(signal.trim())) {
+            confidence += 0.4;
+          }
+        }
+      }
+
+      // 2. Vérifier exemples (FILTRÉS - on retire les stopwords)
+      for (const exemple of intention.exemples) {
+        const exempleMots = exemple.toLowerCase()
+          .split(/\s+/)
+          .filter((mot: string) => mot.length > 2 && !/^\d+$/.test(mot) && !dynamicStopwords.has(mot));
+
+        const queryMots = queryLower
+          .split(/\s+/)
+          .filter((mot: string) => mot.length > 2 && !/^\d+$/.test(mot) && !dynamicStopwords.has(mot));
+
+        const motsCommuns = exempleMots.filter((mot: string) => queryMots.includes(mot)).length;
+
+        // Éviter division par zéro si tous les mots sont des stopwords
+        if (exempleMots.length > 0 && queryMots.length > 0) {
+          confidence += (motsCommuns / Math.max(exempleMots.length, queryMots.length)) * 0.6;
+        }
+      }
+
+      return confidence;
+    };
+
+    // ========================================
     // PROMPT 1 : Analyse + Découverte des intentions
     // ========================================
     const prompt1 = `Tu es un consultant SEO senior spécialisé dans l'analyse d'intentions de recherche.
@@ -55,7 +131,9 @@ CONTEXTE
 IMPORTANT : Les requêtes contenant "${brand}" ont déjà été EXCLUES du dataset. NE CRÉE PAS d'intention "Accès direct marque" ou similaire.
 
 MISSION
-Analyse ces requêtes SANS utiliser de catégories prédéfinies. Identifie les PATTERNS RÉELS et les intentions CONCRÈTES des utilisateurs.
+1. Identifie d'abord la THÉMATIQUE GLOBALE du site (en 1 phrase)
+2. Analyse ces requêtes SANS utiliser de catégories prédéfinies
+3. Identifie les PATTERNS RÉELS et les intentions CONCRÈTES des utilisateurs
 
 DONNÉES
 ${queryData.slice(0, 200).map(q =>
@@ -81,18 +159,20 @@ ANALYSE REQUISE
    - Termes comparatifs (vs, ou, meilleur)
 
 3. **INSIGHTS STRATÉGIQUES** (DÉTAILLÉS ET ACTIONNABLES)
-   - biggest_opportunity : Décris EN DÉTAIL (2-3 phrases minimum) l'opportunité principale avec des EXEMPLES CONCRETS de requêtes et des CHIFFRES précis (volume, position, CTR). Explique POURQUOI c'est une opportunité et COMMENT la saisir.
-   - biggest_friction : Décris EN DÉTAIL (2-3 phrases minimum) la friction principale avec des EXEMPLES CONCRETS de requêtes et des CHIFFRES précis. Explique POURQUOI c'est une friction et COMMENT la résoudre.
-   - quick_win : Décris EN DÉTAIL (2-3 phrases minimum) une action rapide et concrète à mettre en place IMMÉDIATEMENT, avec des EXEMPLES précis de requêtes concernées et l'impact attendu.
+   - biggest_opportunity : Décris EN DÉTAIL (2-3 phrases minimum) l'opportunité principale avec des EXEMPLES CONCRETS de requêtes et des CHIFFRES précis issus des données (volume, position, CTR). Explique POURQUOI c'est une opportunité et COMMENT la saisir. NE PAS inclure d'estimations de clics potentiels.
+   - biggest_friction : Décris EN DÉTAIL (2-3 phrases minimum) la friction principale avec des EXEMPLES CONCRETS de requêtes et des CHIFFRES précis issus des données (volume, position, CTR). Explique POURQUOI c'est une friction et COMMENT la résoudre. NE PAS inclure d'estimations de clics perdus.
+   - quick_win : Décris EN DÉTAIL (2-3 phrases minimum) une action rapide et concrète à mettre en place IMMÉDIATEMENT, avec des EXEMPLES précis de requêtes concernées. Focus sur la RECOMMANDATION ACTIONNABLE, pas sur l'impact chiffré estimé.
 
 CONTRAINTES IMPORTANTES :
-- NE JAMAIS recommander de capitaliser sur des fautes d'orthographe (ex: "look academy" vs "lock academy") - c'est une pratique black-hat interdite
-- NE JAMAIS suggérer de créer des URLs spécifiques (ex: "/escape-game-paris-2-joueurs") sans savoir si elles existent déjà - reste sur des recommandations stratégiques de haut niveau
+- NE JAMAIS recommander de capitaliser sur des fautes d'orthographe - c'est une pratique black-hat interdite
+- NE JAMAIS suggérer de créer des URLs spécifiques sans savoir si elles existent déjà - reste sur des recommandations stratégiques de haut niveau
 - Privilégier les recommandations WHITE-HAT : optimisation de contenu existant, amélioration de la pertinence, structure de l'information
 - Les insights doivent être RICHES, DÉTAILLÉS et contenir des DONNÉES CHIFFRÉES issues de l'analyse (exemples de requêtes, volumes, positions, CTR)
+- NE PAS inclure d'estimations de clics futurs ou potentiels (ex: "+300 clics", "récupérer 80 clics") - se concentrer sur les RECOMMANDATIONS ACTIONNABLES
 
 FORMAT JSON STRICT :
 {
+  "thematique_site": "string (1 phrase décrivant le type de site et son domaine)",
   "intentions": [
     {
       "nom": "string",
@@ -147,32 +227,15 @@ FORMAT JSON STRICT :
     // ========================================
 
     // Préparer les requêtes pour chaque intention (avec toutes les données)
+    // Utilise la MÊME logique que la classification finale pour cohérence
     const intentionQueries = analysis.intentions.map((intention: any) => {
       const relatedQueries = queryData.filter(q => {
         const queryLower = q.query.toLowerCase();
+        const confidence = calculateConfidence(queryLower, intention);
 
-        // Vérifier signaux linguistiques
-        if (intention.signal_linguistique) {
-          const signals = intention.signal_linguistique.toLowerCase().split(/[,;]/);
-          for (const signal of signals) {
-            if (queryLower.includes(signal.trim())) {
-              return true;
-            }
-          }
-        }
-
-        // Vérifier exemples
-        for (const exemple of intention.exemples) {
-          const exempleMots = exemple.toLowerCase().split(' ');
-          const queryMots = queryLower.split(' ');
-          const motsCommuns = exempleMots.filter((mot: string) => queryMots.includes(mot)).length;
-          const similarity = motsCommuns / Math.max(exempleMots.length, queryMots.length);
-          if (similarity > 0.4) {
-            return true;
-          }
-        }
-
-        return false;
+        // Même seuil que classification finale
+        // Baissé à 0.4 car stopwords rendent les mots restants plus discriminants
+        return confidence >= 0.4;
       });
 
       // FILTRAGE STRICT : Positions 5-20 UNIQUEMENT + Volume minimum
@@ -210,15 +273,15 @@ ${idx + 1}. ${int.nom} (${int.description})
    ).join('\n')}
 `).join('\n')}
 
-MISSION : Sélectionner les 5-7 meilleurs quick wins par intention
+MISSION : Sélectionner les 10 meilleurs quick wins par intention (MAXIMUM 10)
 
 RÈGLES DE SÉLECTION STRICTES :
 
 1. **DÉDUPLICATION SÉMANTIQUE OBLIGATOIRE**
-   - NE JAMAIS sélectionner plusieurs queries quasi-identiques
+   - NE JAMAIS sélectionner plusieurs queries quasi-identiques qui ciblent la même SERP
    - Exemples de doublons À ÉVITER :
-     ❌ "escape game pour 6" ET "escape game pour 6 personnes" → MÊME SERP
-     ❌ "escape game paris 6" ET "escape game 6eme" → MÊME SERP
+     ❌ "vélo pour enfant" ET "vélo pour enfants" → MÊME SERP
+     ❌ "restaurant paris 11" ET "restaurant paris 11eme" → MÊME SERP
    - Si plusieurs queries similaires : GARDER SEULEMENT celle avec le PLUS d'impressions
 
 2. **PRIORISATION**
@@ -226,10 +289,11 @@ RÈGLES DE SÉLECTION STRICTES :
    - Position entre 5 et 15 (meilleur potentiel de progression)
    - CTR faible/moyen (< 10% = opportunité)
 
-3. **LIMITE STRICTE : 5 quick wins MAXIMUM par intention**
+3. **LIMITE ABSOLUE : 10 quick wins MAXIMUM par intention - PAS PLUS**
    - Qualité > Quantité : ne garder que les MEILLEURES opportunités
    - Chaque query doit être UNIQUE (pas de doublons sémantiques)
-   - Si moins de 5 candidats pertinents : ne pas forcer, renvoyer ce qui est vraiment utile
+   - Si moins de 10 candidats pertinents : ne pas forcer, renvoyer ce qui est vraiment utile
+   - NE JAMAIS dépasser 10 quick wins par intention
 
 FORMAT JSON STRICT :
 {
@@ -256,7 +320,7 @@ IMPORTANT :
 
     const message2 = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 8192,
+      max_tokens: 16384, // Augmenté pour datasets volumineux
       messages: [
         {
           role: 'user',
@@ -290,31 +354,17 @@ IMPORTANT :
       }
     }
 
-    // Classifier chaque requête NON-BRAND selon les intentions découvertes
-    const classifiedQueries = nonBrandQueries.map(query => {
+    // ========================================
+    // CLASSIFICATION HYBRID : Algo + Claude pour queries douteuses
+    // ========================================
+
+    // Étape 1 : Classification algorithmique
+    const algoClassified = nonBrandQueries.map(query => {
       let bestMatch = { intention: 'Non classifiée', confidence: 0 };
+      const queryLower = query.query.toLowerCase();
 
       for (const intention of analysis.intentions) {
-        let confidence = 0;
-        const queryLower = query.query.toLowerCase();
-
-        // Vérifier les signaux linguistiques
-        if (intention.signal_linguistique) {
-          const signals = intention.signal_linguistique.toLowerCase().split(/[,;]/);
-          for (const signal of signals) {
-            if (queryLower.includes(signal.trim())) {
-              confidence += 0.4;
-            }
-          }
-        }
-
-        // Vérifier les exemples
-        for (const exemple of intention.exemples) {
-          const exempleMots = exemple.toLowerCase().split(' ');
-          const queryMots = queryLower.split(' ');
-          const motsCommuns = exempleMots.filter((mot: string) => queryMots.includes(mot)).length;
-          confidence += (motsCommuns / Math.max(exempleMots.length, queryMots.length)) * 0.6;
-        }
+        const confidence = calculateConfidence(queryLower, intention);
 
         if (confidence > bestMatch.confidence) {
           bestMatch = { intention: intention.nom, confidence };
@@ -327,6 +377,102 @@ IMPORTANT :
         confidence: bestMatch.confidence
       };
     });
+
+    // Étape 2 : Séparer selon la confiance
+    const highConfidence = algoClassified.filter(q => q.confidence >= 0.5);
+    const doubtful = algoClassified.filter(q => q.confidence >= 0.15 && q.confidence < 0.5);
+    const lowConfidence = algoClassified.filter(q => q.confidence < 0.15);
+
+    console.log(`Classification: ${highConfidence.length} high / ${doubtful.length} doubtful / ${lowConfidence.length} low`);
+
+    // Étape 3 : Claude affine les queries douteuses (si il y en a)
+    let refinedDoubtful = doubtful;
+
+    if (doubtful.length > 0) {
+      // Limiter à 200 queries max pour éviter timeout - prendre les plus volumineuses
+      const doubtfulToRefine = doubtful
+        .sort((a, b) => b.impressions - a.impressions)
+        .slice(0, 200);
+
+      const prompt3 = `Tu es un expert SEO chargé d'affiner la classification de requêtes.
+
+CONTEXTE DU SITE
+Thématique : ${analysis.thematique_site || 'non identifiée'}
+Secteur : ${sector || 'non spécifié'}
+
+INTENTIONS IDENTIFIÉES
+${analysis.intentions.map((int: any, idx: number) => `${idx + 1}. ${int.nom}
+   Description : ${int.description}
+   Exemples : ${int.exemples.join(', ')}
+   Signal linguistique : ${int.signal_linguistique || 'aucun'}`).join('\n\n')}
+
+REQUÊTES À CLASSIFIER (${doubtfulToRefine.length} requêtes)
+${doubtfulToRefine.map(q => `"${q.query}"`).join('\n')}
+
+MISSION
+Pour chaque requête, détermine la meilleure intention OU "Non classifiée" si aucune ne correspond.
+
+RÈGLES IMPORTANTES
+- Utilise la THÉMATIQUE du site pour contextualiser : les mots du domaine (ex: "velo" pour un site vélo) sont NORMAUX et ne doivent pas influencer négativement
+- Une query "dynamo velo" sur un site vélo est probablement NON pertinente pour "Programmes entraînement" même si "velo" est présent
+- Une query "appli entrainement velo" sur un site vélo EST pertinente pour "Programmes entraînement" car "entrainement" est le discriminant
+- Privilégie la PRÉCISION : en cas de doute, mets "Non classifiée"
+
+FORMAT JSON STRICT :
+{
+  "classifications": [
+    {
+      "query": "string",
+      "intention": "string (nom de l'intention ou 'Non classifiée')",
+      "justification": "string (1 phrase courte)"
+    }
+  ]
+}`;
+
+      try {
+        const message3 = await anthropic.messages.create({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 8192,
+          messages: [{ role: 'user', content: prompt3 }]
+        });
+
+        const content3 = message3.content[0];
+        if (content3.type === 'text') {
+          const jsonMatch3 = content3.text.match(/\{[\s\S]*\}/);
+          if (jsonMatch3) {
+            const refinement = JSON.parse(jsonMatch3[0]);
+
+            // Fusionner les classifications de Claude
+            refinedDoubtful = doubtful.map(q => {
+              const claudeClass = refinement.classifications.find(
+                (c: any) => c.query.toLowerCase() === q.query.toLowerCase()
+              );
+
+              if (claudeClass) {
+                return {
+                  ...q,
+                  intention: claudeClass.intention,
+                  confidence: claudeClass.intention === 'Non classifiée' ? 0 : 0.4 // Claude confirme
+                };
+              }
+              return q; // Garder classification algo
+            });
+
+            console.log(`Claude refined ${refinement.classifications.length} doubtful queries`);
+          }
+        }
+      } catch (error) {
+        console.warn('Claude refinement failed, keeping algo classifications:', error);
+        // Fallback : garder classifications algo
+      }
+    }
+
+    // Étape 4 : Fusionner tous les résultats
+    const classifiedQueries = [
+      ...highConfidence,
+      ...refinedDoubtful,
+      ...lowConfidence.map(q => ({ ...q, intention: 'Non classifiée', confidence: 0 }))
+    ];
 
     return NextResponse.json({
       analysis,

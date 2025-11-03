@@ -638,6 +638,9 @@ export default function GSCIntentionAnalyzer() {
                   <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
                     📁 Export CSV Google Search Console
                   </label>
+                  <p style={{ ...styles.text, fontSize: '15px', color: '#FFA500', marginBottom: '12px', marginTop: '-4px', fontWeight: 600 }}>
+                    💡 Pour des résultats plus fiables, exportez 12 à 16 mois de données
+                  </p>
                   <input
                     type="file"
                     accept=".csv"

@@ -27,6 +27,20 @@ interface Intention {
   position_moyenne: number;
 }
 
+interface QuickWin {
+  query: string;
+  position: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  action: string;
+}
+
+interface QuickWinsByIntention {
+  intention: string;
+  quick_wins: QuickWin[];
+}
+
 interface Analysis {
   intentions: Intention[];
   patterns_linguistiques: {
@@ -40,6 +54,7 @@ interface Analysis {
     biggest_friction: string;
     quick_win: string;
   };
+  quick_wins_par_intention?: QuickWinsByIntention[];
 }
 
 const COLORS = ['#f7c724', '#0edd89', '#27f6c5', '#c526f6', '#27bef7', '#fdf13e', '#f142fd'];
@@ -50,19 +65,22 @@ export default function GSCIntentionAnalyzer() {
   const [sector, setSector] = useState<string>('');
   const [queries, setQueries] = useState<QueryData[]>([]);
   const [classifiedQueries, setClassifiedQueries] = useState<QueryData[]>([]);
+  const [brandQueries, setBrandQueries] = useState<QueryData[]>([]);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [selectedCell, setSelectedCell] = useState<{ intention: string; posGroup: string; queries: QueryData[] } | null>(null);
   const [expandedIntention, setExpandedIntention] = useState<string | null>(null);
   const [showEmailPopup, setShowEmailPopup] = useState<boolean>(false);
+  const [showBrandQueries, setShowBrandQueries] = useState<boolean>(false);
+  const [showAllKeywordsForIntention, setShowAllKeywordsForIntention] = useState<string | null>(null);
 
-  // Afficher la popup 8 secondes après les résultats
+  // Afficher la popup 15 secondes après les résultats
   React.useEffect(() => {
     if (step === 2 && analysis) {
       const timer = setTimeout(() => {
         setShowEmailPopup(true);
-      }, 8000);
+      }, 15000);
       return () => clearTimeout(timer);
     }
   }, [step, analysis]);
@@ -134,6 +152,11 @@ export default function GSCIntentionAnalyzer() {
       return;
     }
 
+    if (!brand || brand.trim() === '') {
+      setError('Le champ "Marque" est obligatoire');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
 
@@ -152,6 +175,7 @@ export default function GSCIntentionAnalyzer() {
       const data = await response.json();
       setAnalysis(data.analysis);
       setClassifiedQueries(data.classifiedQueries);
+      setBrandQueries(data.brandQueries || []);
       setStep(2);
     } catch (err) {
       setError('Erreur analyse : ' + (err instanceof Error ? err.message : 'Unknown error'));
@@ -182,19 +206,65 @@ export default function GSCIntentionAnalyzer() {
         );
 
         if (queriesInCell.length > 0) {
+          const totalImpressions = queriesInCell.reduce((sum, q) => sum + q.impressions, 0);
+          const totalClicks = queriesInCell.reduce((sum, q) => sum + q.clicks, 0);
+
+          // Vérifier si l'échantillon est fiable (min 100 impressions OU 10 clics)
+          const isReliable = totalImpressions >= 100 || totalClicks >= 10;
+
           const avgCTR = queriesInCell.reduce((sum, q) => sum + q.ctr, 0) / queriesInCell.length;
           row[intention.nom] = {
             ctr: avgCTR,
             count: queriesInCell.length,
-            queries: queriesInCell
+            queries: queriesInCell,
+            isReliable: isReliable
           };
         } else {
-          row[intention.nom] = { ctr: 0, count: 0, queries: [] };
+          row[intention.nom] = { ctr: 0, count: 0, queries: [], isReliable: false };
         }
       });
 
       return row;
     });
+  };
+
+  // Calcul de similarité (Jaccard)
+  const calculateSimilarity = (query1: string, query2: string): number => {
+    const words1 = query1.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const words2 = query2.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
+    const intersection = words1.filter(w => words2.includes(w)).length;
+    const union = new Set([...words1, ...words2]).size;
+
+    return union > 0 ? intersection / union : 0;
+  };
+
+  // Grouper les requêtes similaires et garder la meilleure de chaque groupe
+  const groupSimilarQueries = (queries: QueryData[], threshold = 0.75): QueryData[] => {
+    const groups: QueryData[][] = [];
+
+    for (const query of queries) {
+      let addedToGroup = false;
+
+      for (const group of groups) {
+        if (calculateSimilarity(query.query, group[0].query) >= threshold) {
+          group.push(query);
+          addedToGroup = true;
+          break;
+        }
+      }
+
+      if (!addedToGroup) {
+        groups.push([query]);
+      }
+    }
+
+    // Pour chaque groupe, garder la meilleure (position la plus haute = numéro le plus bas)
+    return groups.map(group =>
+      group.reduce((best, current) =>
+        current.position < best.position ? current : best
+      )
+    );
   };
 
   // Détails par intention
@@ -213,11 +283,17 @@ export default function GSCIntentionAnalyzer() {
       'P11+': intentionQueries.filter(q => q.position >= 11).length,
     };
 
-    const quickWins = intentionQueries.filter(q =>
-      q.position >= 4 && q.position <= 10 && q.impressions > 100
+    // Filtrer les quick wins (P5-20 avec >100 impressions)
+    const quickWinsFiltered = intentionQueries.filter(q =>
+      q.position >= 5 && q.position <= 20 && q.impressions > 100
     );
 
-    return { totalClicks, totalImpressions, top5, positionDistribution, quickWins };
+    // Grouper les requêtes similaires et garder top 10 diversifiées
+    const quickWins = groupSimilarQueries(quickWinsFiltered)
+      .sort((a, b) => a.position - b.position)
+      .slice(0, 10);
+
+    return { totalClicks, totalImpressions, top5, positionDistribution, quickWins, allQueries: intentionQueries };
   };
 
   // Styles communs
@@ -333,6 +409,111 @@ export default function GSCIntentionAnalyzer() {
     </div>
   );
 
+  // ÉCRAN DE CHARGEMENT avec Newsletter
+  if (isLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: '#000',
+        color: '#fff',
+        padding: '40px 20px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <div style={{
+          maxWidth: '600px',
+          textAlign: 'center'
+        }}>
+          {/* Loader animé */}
+          <div style={{
+            width: '80px',
+            height: '80px',
+            border: '6px solid #333',
+            borderTop: '6px solid #f7c724',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 30px'
+          }} />
+          <style>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
+
+          <h2 style={{
+            ...styles.title,
+            fontSize: '28px',
+            color: '#f7c724',
+            marginBottom: '16px'
+          }}>
+            ⚡ Analyse en cours...
+          </h2>
+
+          <p style={{
+            ...styles.text,
+            fontSize: '16px',
+            color: '#999',
+            marginBottom: '40px',
+            lineHeight: '1.6'
+          }}>
+            L'analyse peut durer <strong style={{ color: '#fff' }}>2 à 3 minutes</strong>.<br />
+            Pendant ce temps, découvrez mes analyses SEO exclusives !
+          </p>
+
+          {/* Formulaire Newsletter Substack */}
+          <div style={{
+            background: '#1a1a1a',
+            border: '2px solid #f7c724',
+            borderRadius: '12px',
+            padding: '30px',
+            marginTop: '20px'
+          }}>
+            <h3 style={{
+              ...styles.title,
+              fontSize: '20px',
+              color: '#f7c724',
+              marginTop: 0,
+              marginBottom: '16px'
+            }}>
+              🎉 Recevez mes prochains outils gratuits !
+            </h3>
+            <p style={{
+              ...styles.text,
+              fontSize: '15px',
+              color: '#ccc',
+              marginBottom: '24px',
+              lineHeight: '1.7'
+            }}>
+              Inscrivez-vous à ma newsletter pour être notifié en avant-première de mes nouveaux outils SEO.<br />
+              <span style={{ color: '#999', fontSize: '14px' }}>Pas de spam - que du concret.</span>
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <iframe
+                src="https://bastienamoruso.substack.com/embed"
+                width="480"
+                height="320"
+                style={{
+                  border: '1px solid #333',
+                  background: 'white',
+                  borderRadius: '8px',
+                  maxWidth: '100%'
+                }}
+                frameBorder="0"
+                scrolling="no"
+                allow="forms"
+                sandbox="allow-forms allow-scripts allow-same-origin allow-popups"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ÉTAPE 1: Upload
   if (step === 1) {
     return (
@@ -376,7 +557,7 @@ export default function GSCIntentionAnalyzer() {
           </div>
         </div>
 
-        <div style={{ maxWidth: '800px', margin: '0 auto', padding: '40px 20px' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '40px 20px' }}>
           {error && (
             <div style={{
               ...styles.card,
@@ -388,122 +569,197 @@ export default function GSCIntentionAnalyzer() {
             </div>
           )}
 
-          <div style={{ ...styles.card, marginBottom: '20px' }}>
-            <h2 style={{ ...styles.title, marginTop: 0, color: '#f7c724' }}>
-              📊 ÉTAPE 1 : CHARGEZ VOS DONNÉES
-            </h2>
+          {/* Layout 2 colonnes : Formulaire + GIF Tutoriel */}
+          <div style={{
+            display: 'flex',
+            gap: '40px',
+            alignItems: 'flex-start',
+            flexWrap: 'wrap'
+          }}>
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
-                Marque (optionnel)
-              </label>
-              <input
-                type="text"
-                value={brand}
-                onChange={(e) => setBrand(e.target.value)}
-                placeholder="Ex: Nike, Apple, etc."
-                style={{
-                  ...styles.text,
-                  width: '100%',
-                  padding: '12px',
-                  background: '#0a0a0a',
-                  border: '1px solid #333',
-                  borderRadius: '6px',
-                  color: '#fff',
-                  fontSize: '14px'
-                }}
-              />
-            </div>
+            {/* Colonne gauche : Formulaire */}
+            <div style={{ flex: '1 1 500px', minWidth: '320px' }}>
+              <div style={{ ...styles.card, marginBottom: '20px' }}>
+                <h2 style={{ ...styles.title, marginTop: 0, color: '#f7c724' }}>
+                  📊 ÉTAPE 1 : CHARGEZ VOS DONNÉES
+                </h2>
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
-                Secteur (optionnel)
-              </label>
-              <input
-                type="text"
-                value={sector}
-                onChange={(e) => setSector(e.target.value)}
-                placeholder="Ex: E-commerce, SaaS, etc."
-                style={{
-                  ...styles.text,
-                  width: '100%',
-                  padding: '12px',
-                  background: '#0a0a0a',
-                  border: '1px solid #333',
-                  borderRadius: '6px',
-                  color: '#fff',
-                  fontSize: '14px'
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
-                📁 Export CSV Google Search Console
-              </label>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                style={{
-                  ...styles.text,
-                  width: '100%',
-                  padding: '12px',
-                  background: '#0a0a0a',
-                  border: '2px dashed #333',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  color: '#999'
-                }}
-              />
-              <p style={{ ...styles.text, fontSize: '12px', color: '#666', marginTop: '8px' }}>
-                💡 Exportez depuis GSC : Performance → Requêtes → Exporter
-              </p>
-            </div>
-
-            {queries.length > 0 && (
-              <div style={{
-                background: '#0f2a1a',
-                border: '1px solid #2a5a3a',
-                padding: '15px',
-                borderRadius: '8px',
-                marginBottom: '20px'
-              }}>
-                <div style={{ ...styles.text }}>
-                  ✅ <strong>{queries.length} requêtes</strong> chargées
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+                    Marque <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={brand}
+                    onChange={(e) => setBrand(e.target.value)}
+                    placeholder="Ex: Lock Academy, Nike, Apple, etc."
+                    required
+                    style={{
+                      ...styles.text,
+                      width: '100%',
+                      padding: '12px',
+                      background: '#0a0a0a',
+                      border: brand ? '1px solid #333' : '1px solid #ef4444',
+                      borderRadius: '6px',
+                      color: '#fff',
+                      fontSize: '14px'
+                    }}
+                  />
+                  {!brand && (
+                    <p style={{ ...styles.text, fontSize: '12px', color: '#ef4444', marginTop: '4px' }}>
+                      ⚠️ Ce champ est obligatoire pour filtrer les requêtes marque
+                    </p>
+                  )}
                 </div>
-                <div style={{ ...styles.text, fontSize: '12px', marginTop: '5px', color: '#999' }}>
-                  Total clics : {queries.reduce((sum, q) => sum + q.clicks, 0).toLocaleString()} |
-                  Total impressions : {queries.reduce((sum, q) => sum + q.impressions, 0).toLocaleString()}
+
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+                    Secteur (optionnel)
+                  </label>
+                  <input
+                    type="text"
+                    value={sector}
+                    onChange={(e) => setSector(e.target.value)}
+                    placeholder="Ex: E-commerce, SaaS, etc."
+                    style={{
+                      ...styles.text,
+                      width: '100%',
+                      padding: '12px',
+                      background: '#0a0a0a',
+                      border: '1px solid #333',
+                      borderRadius: '6px',
+                      color: '#fff',
+                      fontSize: '14px'
+                    }}
+                  />
                 </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+                    📁 Export CSV Google Search Console
+                  </label>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileUpload}
+                    style={{
+                      ...styles.text,
+                      width: '100%',
+                      padding: '12px',
+                      background: '#0a0a0a',
+                      border: '2px dashed #333',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      color: '#999'
+                    }}
+                  />
+                  <p style={{ ...styles.text, fontSize: '12px', color: '#666', marginTop: '8px' }}>
+                    💡 Exportez depuis GSC : Performance → Requêtes → Exporter
+                  </p>
+                </div>
+
+                {queries.length > 0 && (
+                  <div style={{
+                    background: '#0f2a1a',
+                    border: '1px solid #2a5a3a',
+                    padding: '15px',
+                    borderRadius: '8px',
+                    marginBottom: '20px'
+                  }}>
+                    <div style={{ ...styles.text }}>
+                      ✅ <strong>{queries.length} requêtes</strong> chargées
+                    </div>
+                    <div style={{ ...styles.text, fontSize: '12px', marginTop: '5px', color: '#999' }}>
+                      Total clics : {queries.reduce((sum, q) => sum + q.clicks, 0).toLocaleString()} |
+                      Total impressions : {queries.reduce((sum, q) => sum + q.impressions, 0).toLocaleString()}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={analyzeQueries}
+                  disabled={queries.length === 0 || !brand || isLoading}
+                  style={{
+                    ...styles.button,
+                    width: '100%',
+                    padding: '16px',
+                    opacity: (queries.length === 0 || !brand) ? 0.5 : 1,
+                    cursor: (queries.length === 0 || !brand) ? 'not-allowed' : 'pointer'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (queries.length > 0 && brand) {
+                      e.currentTarget.style.background = '#f7c724';
+                      e.currentTarget.style.color = '#000';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (queries.length > 0 && brand) {
+                      e.currentTarget.style.background = '#000';
+                      e.currentTarget.style.color = '#f7c724';
+                    }
+                  }}
+                >
+                  {isLoading ? '🔄 ANALYSE EN COURS...' : '🚀 ANALYSER LES INTENTIONS'}
+                </button>
               </div>
-            )}
+            </div>
 
-            <button
-              onClick={analyzeQueries}
-              disabled={queries.length === 0 || isLoading}
-              style={{
-                ...styles.button,
-                width: '100%',
-                padding: '16px',
-                opacity: queries.length === 0 ? 0.5 : 1,
-                cursor: queries.length === 0 ? 'not-allowed' : 'pointer'
-              }}
-              onMouseEnter={(e) => {
-                if (queries.length > 0) {
-                  e.currentTarget.style.background = '#f7c724';
-                  e.currentTarget.style.color = '#000';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (queries.length > 0) {
-                  e.currentTarget.style.background = '#000';
-                  e.currentTarget.style.color = '#f7c724';
-                }
-              }}
-            >
-              {isLoading ? '🔄 ANALYSE EN COURS...' : '🚀 ANALYSER LES INTENTIONS'}
-            </button>
+            {/* Colonne droite : GIF Tutoriel */}
+            <div style={{ flex: '1 1 400px', minWidth: '320px' }}>
+              <div style={{
+                ...styles.card,
+                padding: '24px',
+                position: 'sticky',
+                top: '20px'
+              }}>
+                <h3 style={{
+                  ...styles.title,
+                  fontSize: '18px',
+                  color: '#f7c724',
+                  marginTop: 0,
+                  marginBottom: '16px'
+                }}>
+                  📖 Comment exporter depuis GSC ?
+                </h3>
+                <p style={{
+                  ...styles.text,
+                  fontSize: '14px',
+                  color: '#999',
+                  marginBottom: '16px',
+                  lineHeight: '1.6'
+                }}>
+                  Suivez ce tutoriel pour exporter vos données depuis Google Search Console :
+                </p>
+                <div style={{
+                  border: '2px solid #333',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  background: '#000'
+                }}>
+                  <img
+                    src="/bon-gif.gif"
+                    alt="Tutoriel export GSC"
+                    style={{
+                      width: '100%',
+                      height: 'auto',
+                      display: 'block'
+                    }}
+                  />
+                </div>
+                <p style={{
+                  ...styles.text,
+                  fontSize: '12px',
+                  color: '#666',
+                  marginTop: '12px',
+                  lineHeight: '1.5'
+                }}>
+                  1️⃣ Allez dans Google Search Console<br />
+                  2️⃣ Performance → Requêtes<br />
+                  3️⃣ Exportez le fichier CSV<br />
+                  4️⃣ Décompressez le ZIP et uploadez le CSV ici
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -596,6 +852,103 @@ export default function GSCIntentionAnalyzer() {
             </div>
           </div>
 
+          {/* Requêtes marque identifiées */}
+          {brandQueries.length > 0 && (
+            <div style={{ ...styles.card, marginBottom: '30px', borderLeft: '4px solid #0edd89' }}>
+              <h3 style={{ ...styles.title, marginTop: 0, color: '#0edd89', fontSize: '18px' }}>
+                🏷️ REQUÊTES MARQUE IDENTIFIÉES
+              </h3>
+              <p style={{ ...styles.text, color: '#ccc', fontSize: '14px', marginBottom: '15px' }}>
+                <strong>{brandQueries.length} requête{brandQueries.length > 1 ? 's' : ''}</strong> contenant "{brand}" ont été exclues de l'analyse des intentions.
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginBottom: '15px' }}>
+                <div>
+                  <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>Total clics</div>
+                  <div style={{ ...styles.title, fontSize: '20px', color: '#0edd89' }}>
+                    {brandQueries.reduce((sum, q) => sum + q.clicks, 0).toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>Total impressions</div>
+                  <div style={{ ...styles.title, fontSize: '20px', color: '#0edd89' }}>
+                    {brandQueries.reduce((sum, q) => sum + q.impressions, 0).toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>CTR moyen</div>
+                  <div style={{ ...styles.title, fontSize: '20px', color: '#0edd89' }}>
+                    {((brandQueries.reduce((sum, q) => sum + q.clicks, 0) / brandQueries.reduce((sum, q) => sum + q.impressions, 0)) * 100).toFixed(1)}%
+                  </div>
+                </div>
+                <div>
+                  <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>Position moyenne</div>
+                  <div style={{ ...styles.title, fontSize: '20px', color: '#0edd89' }}>
+                    {(brandQueries.reduce((sum, q) => sum + q.position, 0) / brandQueries.length).toFixed(1)}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowBrandQueries(!showBrandQueries)}
+                style={{
+                  ...styles.button,
+                  padding: '10px 20px',
+                  fontSize: '13px'
+                }}
+              >
+                {showBrandQueries ? '▼ Masquer les requêtes' : '▶ Voir toutes les requêtes'}
+              </button>
+
+              {showBrandQueries && (
+                <div style={{ marginTop: '15px', maxHeight: '400px', overflowY: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...styles.title, padding: '10px', background: '#1a1a1a', border: '1px solid #333', textAlign: 'left' }}>
+                          Requête
+                        </th>
+                        <th style={{ ...styles.title, padding: '10px', background: '#1a1a1a', border: '1px solid #333', textAlign: 'center' }}>
+                          Position
+                        </th>
+                        <th style={{ ...styles.title, padding: '10px', background: '#1a1a1a', border: '1px solid #333', textAlign: 'center' }}>
+                          CTR
+                        </th>
+                        <th style={{ ...styles.title, padding: '10px', background: '#1a1a1a', border: '1px solid #333', textAlign: 'center' }}>
+                          Clics
+                        </th>
+                        <th style={{ ...styles.title, padding: '10px', background: '#1a1a1a', border: '1px solid #333', textAlign: 'center' }}>
+                          Impressions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {brandQueries.sort((a, b) => b.clicks - a.clicks).map((q, i) => (
+                        <tr key={i} style={{ background: i % 2 === 0 ? '#0a0a0a' : '#121212' }}>
+                          <td style={{ ...styles.text, padding: '10px', border: '1px solid #333' }}>
+                            {q.query}
+                          </td>
+                          <td style={{ ...styles.text, padding: '10px', border: '1px solid #333', textAlign: 'center' }}>
+                            {q.position.toFixed(1)}
+                          </td>
+                          <td style={{ ...styles.text, padding: '10px', border: '1px solid #333', textAlign: 'center' }}>
+                            {(q.ctr * 100).toFixed(1)}%
+                          </td>
+                          <td style={{ ...styles.text, padding: '10px', border: '1px solid #333', textAlign: 'center' }}>
+                            {q.clicks}
+                          </td>
+                          <td style={{ ...styles.text, padding: '10px', border: '1px solid #333', textAlign: 'center' }}>
+                            {q.impressions}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Détails par intention (accordéon) */}
           <div style={{ ...styles.card, marginBottom: '30px' }}>
             <h2 style={{ ...styles.title, marginTop: 0, color: '#f7c724' }}>
@@ -604,6 +957,11 @@ export default function GSCIntentionAnalyzer() {
             {analysis.intentions.map((intention, idx) => {
               const details = getIntentionDetails(intention.nom);
               const isExpanded = expandedIntention === intention.nom;
+
+              // Recalculer le CTR RÉEL côté client (total clics / total impressions)
+              const realCTR = details.totalImpressions > 0
+                ? (details.totalClicks / details.totalImpressions)
+                : 0;
 
               return (
                 <div key={idx} style={{
@@ -633,7 +991,7 @@ export default function GSCIntentionAnalyzer() {
                         {intention.description}
                       </div>
                       <div style={{ ...styles.text, fontSize: '11px', color: '#666', marginTop: '4px' }}>
-                        📊 {intention.volume} req • CTR: {(intention.ctr_moyen * 100).toFixed(1)}% • Pos: {intention.position_moyenne.toFixed(1)}
+                        📊 {intention.volume} req • CTR: {(realCTR * 100).toFixed(1)}% • Pos: {intention.position_moyenne.toFixed(1)}
                       </div>
                     </div>
                     <div style={{ fontSize: '20px' }}>{isExpanded ? '▼' : '▶'}</div>
@@ -678,29 +1036,117 @@ export default function GSCIntentionAnalyzer() {
                             Clics: {q.clicks}
                           </div>
                         ))}
+
+                        {/* Bouton "Voir tous les mots-clés" */}
+                        <button
+                          onClick={() => setShowAllKeywordsForIntention(
+                            showAllKeywordsForIntention === intention.nom ? null : intention.nom
+                          )}
+                          style={{
+                            ...styles.text,
+                            marginTop: '12px',
+                            padding: '10px 16px',
+                            background: '#f7c724',
+                            color: '#000',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            fontSize: '12px',
+                            width: '100%'
+                          }}
+                        >
+                          {showAllKeywordsForIntention === intention.nom
+                            ? '▼ Masquer tous les mots-clés'
+                            : `▶ Voir tous les ${details.allQueries?.length || 0} mots-clés`}
+                        </button>
+
+                        {/* Table avec tous les mots-clés */}
+                        {showAllKeywordsForIntention === intention.nom && (
+                          <div style={{ marginTop: '15px', maxHeight: '400px', overflowY: 'auto', border: '1px solid #333', borderRadius: '6px' }}>
+                            <table style={{ width: '100%', fontSize: '11px' }}>
+                              <thead style={{ position: 'sticky', top: 0, background: '#1a1a1a', zIndex: 1 }}>
+                                <tr>
+                                  <th style={{ ...styles.text, padding: '10px', textAlign: 'left', borderBottom: '1px solid #333' }}>Requête</th>
+                                  <th style={{ ...styles.text, padding: '10px', textAlign: 'center', borderBottom: '1px solid #333' }}>Position</th>
+                                  <th style={{ ...styles.text, padding: '10px', textAlign: 'center', borderBottom: '1px solid #333' }}>Clics</th>
+                                  <th style={{ ...styles.text, padding: '10px', textAlign: 'center', borderBottom: '1px solid #333' }}>Impressions</th>
+                                  <th style={{ ...styles.text, padding: '10px', textAlign: 'center', borderBottom: '1px solid #333' }}>CTR</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(details.allQueries || [])
+                                  .sort((a, b) => b.clicks - a.clicks)
+                                  .map((q, i) => (
+                                    <tr key={i} style={{ background: i % 2 === 0 ? '#0a0a0a' : '#121212' }}>
+                                      <td style={{ ...styles.text, padding: '8px', borderBottom: '1px solid #222' }}>
+                                        {q.query}
+                                      </td>
+                                      <td style={{ ...styles.text, padding: '8px', textAlign: 'center', borderBottom: '1px solid #222' }}>
+                                        {q.position.toFixed(1)}
+                                      </td>
+                                      <td style={{ ...styles.text, padding: '8px', textAlign: 'center', borderBottom: '1px solid #222' }}>
+                                        {q.clicks}
+                                      </td>
+                                      <td style={{ ...styles.text, padding: '8px', textAlign: 'center', borderBottom: '1px solid #222' }}>
+                                        {q.impressions}
+                                      </td>
+                                      <td style={{ ...styles.text, padding: '8px', textAlign: 'center', borderBottom: '1px solid #222' }}>
+                                        {(q.ctr * 100).toFixed(1)}%
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
 
-                      {details.quickWins.length > 0 && (
-                        <div>
-                          <div style={{ ...styles.text, fontSize: '12px', color: '#f7c724', marginBottom: '8px' }}>
-                            ⚡ Quick wins ({details.quickWins.length} requêtes en P4-10 avec &gt;100 imp)
-                          </div>
-                          {details.quickWins.slice(0, 3).map((q, i) => (
-                            <div key={i} style={{
-                              ...styles.text,
-                              fontSize: '11px',
-                              padding: '8px',
-                              background: '#2a1a0a',
-                              borderRadius: '4px',
-                              marginBottom: '4px'
-                            }}>
-                              <strong>"{q.query}"</strong> |
-                              Pos: {q.position.toFixed(1)} |
-                              Imp: {q.impressions}
+                      {(() => {
+                        // Utiliser les quick wins optimisés du Prompt 2 si disponibles
+                        const optimizedQuickWins = analysis.quick_wins_par_intention?.find(
+                          qw => qw.intention === intention.nom
+                        );
+
+                        // Fallback : ancienne logique si quick_wins_par_intention n'existe pas
+                        const quickWinsToDisplay = optimizedQuickWins?.quick_wins || details.quickWins;
+
+                        if (quickWinsToDisplay.length === 0) return null;
+
+                        return (
+                          <div>
+                            <div style={{ ...styles.text, fontSize: '12px', color: '#f7c724', marginBottom: '8px' }}>
+                              ⚡ Quick wins optimisés ({quickWinsToDisplay.length} requêtes en P5-20)
                             </div>
-                          ))}
-                        </div>
-                      )}
+                            {quickWinsToDisplay.map((q, i) => (
+                              <div key={i} style={{
+                                ...styles.text,
+                                fontSize: '11px',
+                                padding: '10px',
+                                background: '#2a1a0a',
+                                borderRadius: '6px',
+                                marginBottom: '6px',
+                                borderLeft: '3px solid #f7c724'
+                              }}>
+                                <div style={{ marginBottom: '4px' }}>
+                                  <strong style={{ color: '#fdf13e' }}>"{q.query}"</strong>
+                                </div>
+                                <div style={{ color: '#999', fontSize: '10px', marginBottom: '4px' }}>
+                                  📊 Pos: {q.position.toFixed(1)} |
+                                  Clics: {q.clicks} |
+                                  Imp: {q.impressions} |
+                                  CTR: {(q.ctr * 100).toFixed(1)}%
+                                </div>
+                                {'action' in q && q.action && (
+                                  <div style={{ color: '#0edd89', fontSize: '10px', fontStyle: 'italic' }}>
+                                    💡 {q.action}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -813,13 +1259,20 @@ export default function GSCIntentionAnalyzer() {
                             }}
                           >
                             {cellData.count > 0 ? (
-                              <>
-                                <div style={{ fontWeight: 600, fontSize: '14px' }}>{ctrPercent}%</div>
-                                <div style={{ fontSize: '10px', color: '#999' }}>
-                                  ({cellData.count} req)
-                                  {isLowData && <span style={{ color: '#f7c724' }}> ⚠️</span>}
-                                </div>
-                              </>
+                              cellData.isReliable ? (
+                                <>
+                                  <div style={{ fontWeight: 600, fontSize: '14px' }}>{ctrPercent}%</div>
+                                  <div style={{ fontSize: '10px', color: '#999' }}>({cellData.count} req)</div>
+                                </>
+                              ) : (
+                                <>
+                                  <div style={{ fontWeight: 600, fontSize: '11px', color: '#666' }}>N/A</div>
+                                  <div style={{ fontSize: '10px', color: '#666' }}>
+                                    ({cellData.count} req)
+                                    <div style={{ fontSize: '9px' }}>échantillon faible</div>
+                                  </div>
+                                </>
+                              )
                             ) : (
                               <span style={{ color: '#666' }}>-</span>
                             )}

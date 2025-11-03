@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       const words = q.query.toLowerCase().split(/\s+/);
       const uniqueWords = new Set(words); // Compter 1 fois par query
 
-      uniqueWords.forEach(word => {
+      uniqueWords.forEach((word: string) => {
         // Ignorer mots < 3 lettres et nombres purs
         if (word.length > 2 && !/^\d+$/.test(word)) {
           wordFrequency.set(word, (wordFrequency.get(word) || 0) + 1);

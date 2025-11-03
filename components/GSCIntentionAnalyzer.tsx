@@ -57,12 +57,12 @@ export default function GSCIntentionAnalyzer() {
   const [expandedIntention, setExpandedIntention] = useState<string | null>(null);
   const [showEmailPopup, setShowEmailPopup] = useState<boolean>(false);
 
-  // Afficher la popup 5 secondes après les résultats
+  // Afficher la popup 8 secondes après les résultats
   React.useEffect(() => {
     if (step === 2 && analysis) {
       const timer = setTimeout(() => {
         setShowEmailPopup(true);
-      }, 5000);
+      }, 8000);
       return () => clearTimeout(timer);
     }
   }, [step, analysis]);

@@ -1017,6 +1017,8 @@ export default function GSCIntentionAnalyzer() {
                   }}
                   frameBorder="0"
                   scrolling="no"
+                  allow="forms"
+                  sandbox="allow-forms allow-scripts allow-same-origin allow-popups"
                 />
               </div>
             </div>

@@ -284,7 +284,7 @@ export default function GSCIntentionAnalyzer() {
       textAlign: 'center'
     }}>
       <p style={{ ...styles.text, margin: 0, fontSize: '14px', color: '#999' }}>
-        créé par <strong style={{ color: '#f7c724' }}>Bastien Amoruso</strong> et son ami <strong style={{ color: '#f7c724' }}>claude</strong>
+        créé par <strong style={{ color: '#f7c724' }}>Bastien Amoruso</strong> - Freelance SEO
       </p>
       <div style={{ marginTop: '12px', display: 'flex', gap: '20px', justifyContent: 'center', alignItems: 'center' }}>
         <a

@@ -12,7 +12,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Configurer OAuth client avec le token d'accès
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET
@@ -22,13 +21,11 @@ export async function POST(request: NextRequest) {
       access_token: accessToken
     });
 
-    // Initialiser le client Search Console
     const searchconsole = google.searchconsole({
       version: 'v1',
       auth: oauth2Client
     });
 
-    // Récupérer la liste des sites
     const response = await searchconsole.sites.list();
 
     const sites = (response.data.siteEntry || []).map((site: any) => ({

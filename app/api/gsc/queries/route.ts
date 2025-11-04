@@ -19,7 +19,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Configurer OAuth client avec le token d'accès
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET
@@ -29,25 +28,22 @@ export async function POST(request: NextRequest) {
       access_token: accessToken
     });
 
-    // Initialiser le client Search Console
     const searchconsole = google.searchconsole({
       version: 'v1',
       auth: oauth2Client
     });
 
-    // Récupérer les données de requêtes
     const response = await searchconsole.searchanalytics.query({
       siteUrl: siteUrl,
       requestBody: {
         startDate: startDate,
         endDate: endDate,
         dimensions: ['query'],
-        rowLimit: 25000, // Maximum autorisé par l'API
+        rowLimit: 25000,
         dataState: 'final'
       }
     });
 
-    // Formater les données pour correspondre au format CSV attendu
     const queries = (response.data.rows || []).map((row: any) => ({
       query: row.keys[0],
       clicks: row.clicks || 0,
@@ -64,7 +60,6 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error fetching GSC data:', error);
 
-    // Gérer les erreurs d'autorisation
     if (error.code === 401 || error.code === 403) {
       return NextResponse.json(
         { error: 'Authorization expired or invalid. Please reconnect.' },

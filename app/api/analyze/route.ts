@@ -1,12 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { checkRateLimit, getClientIP } from '@/lib/rateLimiter';
+import { analysisQueue } from '@/lib/requestQueue';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 export async function POST(request: NextRequest) {
+  const requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  let queueAcquired = false;
+
   try {
+    // 1️⃣ RATE LIMITING PAR IP (3 analyses/jour)
+    const clientIP = getClientIP(request);
+    const rateLimit = checkRateLimit(clientIP, 3);
+
+    if (!rateLimit.allowed) {
+      const resetDate = new Date(rateLimit.resetAt);
+      return NextResponse.json(
+        {
+          error: 'Limite d\'analyses atteinte',
+          message: `Vous avez atteint votre limite de 3 analyses gratuites par jour. Réessayez après ${resetDate.toLocaleTimeString('fr-FR')} (UTC).`,
+          resetAt: rateLimit.resetAt
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': '3',
+            'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+            'X-RateLimit-Reset': rateLimit.resetAt.toString()
+          }
+        }
+      );
+    }
+
+    // 2️⃣ FILE D'ATTENTE (max 5 analyses simultanées)
+    const queueStats = analysisQueue.getQueueStats();
+
+    // Informer l'utilisateur s'il doit attendre
+    if (queueStats.available === 0) {
+      console.log(`[Queue] Request ${requestId} en attente (${queueStats.queued + 1} dans la queue)`);
+    }
+
+    // Attendre son tour
+    await analysisQueue.acquire(requestId);
+    queueAcquired = true; // Marquer que le slot a été acquis
+    console.log(`[Queue] Request ${requestId} en traitement (${queueStats.processing + 1}/5)`);
+
     const { queries, brand, sector } = await request.json();
 
     if (!queries || !Array.isArray(queries)) {
@@ -759,5 +800,11 @@ FORMAT JSON STRICT :
       { error: 'Failed to analyze queries', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
+  } finally {
+    // 3️⃣ TOUJOURS libérer le slot de la queue (même en cas d'erreur)
+    if (queueAcquired) {
+      analysisQueue.release(requestId);
+      console.log(`[Queue] Request ${requestId} terminée, slot libéré`);
+    }
   }
 }

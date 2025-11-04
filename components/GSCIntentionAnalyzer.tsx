@@ -174,8 +174,27 @@ export default function GSCIntentionAnalyzer() {
       }
 
       const data = await response.json();
-      setQueries(data.queries);
+
+      // Filtrer et valider les données comme pour le CSV
+      const cleanedQueries = data.queries
+        .filter((q: any) => q.query && q.query.trim() && q.impressions > 0)
+        .map((q: any) => ({
+          query: String(q.query).trim(),
+          clicks: Number(q.clicks) || 0,
+          impressions: Number(q.impressions) || 0,
+          ctr: Number(q.ctr) || 0,
+          position: Number(q.position) || 0
+        }));
+
+      if (cleanedQueries.length === 0) {
+        setError('Aucune donnée valide trouvée dans la Search Console');
+        setIsLoadingGsc(false);
+        return;
+      }
+
+      setQueries(cleanedQueries);
       setIsLoadingGsc(false);
+      console.log(`✅ ${cleanedQueries.length} requêtes chargées depuis GSC`);
     } catch (error) {
       console.error('Error fetching GSC data:', error);
       setError('Échec de la récupération des données GSC');

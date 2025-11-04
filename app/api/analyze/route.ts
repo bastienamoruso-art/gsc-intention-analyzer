@@ -600,19 +600,19 @@ FORMAT JSON STRICT :
 
         // Pages significatives (≥5% impressions, position 1-20)
         const significantPages = q.pages
-          .filter(p => p.position >= 1 && p.position <= 20)
-          .map(p => ({
+          .filter((p: any) => p.position >= 1 && p.position <= 20)
+          .map((p: any) => ({
             ...p,
             impressionsPercentage: (p.impressions / q.impressions) * 100
           }))
-          .filter(p => p.impressionsPercentage >= 5);
+          .filter((p: any) => p.impressionsPercentage >= 5);
 
         return significantPages.length >= 2;
       })
       .map(q => {
         const pagesInTop20 = q.pages
-          .filter(p => p.position >= 1 && p.position <= 20)
-          .map(p => ({
+          .filter((p: any) => p.position >= 1 && p.position <= 20)
+          .map((p: any) => ({
             url: p.url,
             position: p.position,
             clicks: p.clicks,
@@ -620,8 +620,8 @@ FORMAT JSON STRICT :
             ctr: p.impressions > 0 ? (p.clicks / p.impressions) : 0,
             impressionsPercentage: (p.impressions / q.impressions) * 100
           }))
-          .filter(p => p.impressionsPercentage >= 5)
-          .sort((a, b) => b.impressionsPercentage - a.impressionsPercentage);
+          .filter((p: any) => p.impressionsPercentage >= 5)
+          .sort((a: any, b: any) => b.impressionsPercentage - a.impressionsPercentage);
 
         return {
           query: q.query,
@@ -669,7 +669,7 @@ FORMAT JSON STRICT :
     queryData.forEach(q => {
       if (!q.pages || q.pages.length <= 1) return;
 
-      const pagesInTop20 = q.pages.filter(p => p.position >= 1 && p.position <= 20);
+      const pagesInTop20 = q.pages.filter((p: any) => p.position >= 1 && p.position <= 20);
       if (pagesInTop20.length <= 1) return;
 
       // Grouper les URLs par version normalisée
@@ -687,32 +687,32 @@ FORMAT JSON STRICT :
       urlGroups.forEach((variants, normalized) => {
         if (variants.length >= 2) {
           // Détecter le type de problème
-          const urls = variants.map(v => v.url);
+          const urls = variants.map((v: any) => v.url);
           const issueTypes: string[] = [];
 
           // Vérifier www/non-www
-          const hasWww = urls.some(u => u.includes('://www.'));
-          const hasNonWww = urls.some(u => !u.includes('://www.') && u.startsWith('http'));
+          const hasWww = urls.some((u: any) => u.includes('://www.'));
+          const hasNonWww = urls.some((u: any) => !u.includes('://www.') && u.startsWith('http'));
           if (hasWww && hasNonWww) issueTypes.push('www/non-www');
 
           // Vérifier trailing slash
-          const hasTrailing = urls.some(u => u.endsWith('/'));
-          const hasNoTrailing = urls.some(u => !u.endsWith('/'));
+          const hasTrailing = urls.some((u: any) => u.endsWith('/'));
+          const hasNoTrailing = urls.some((u: any) => !u.endsWith('/'));
           if (hasTrailing && hasNoTrailing) issueTypes.push('trailing-slash');
 
           // Vérifier http/https
-          const hasHttp = urls.some(u => u.startsWith('http://'));
-          const hasHttps = urls.some(u => u.startsWith('https://'));
+          const hasHttp = urls.some((u: any) => u.startsWith('http://'));
+          const hasHttps = urls.some((u: any) => u.startsWith('https://'));
           if (hasHttp && hasHttps) issueTypes.push('http-https');
 
           if (issueTypes.length > 0) {
-            const totalImpressions = variants.reduce((sum, v) => sum + (v.impressions || 0), 0);
-            const totalClicks = variants.reduce((sum, v) => sum + (v.clicks || 0), 0);
+            const totalImpressions = variants.reduce((sum: any, v: any) => sum + (v.impressions || 0), 0);
+            const totalClicks = variants.reduce((sum: any, v: any) => sum + (v.clicks || 0), 0);
 
             technicalIssues.push({
               query: q.query,
               issueTypes,
-              variants: variants.map(v => ({
+              variants: variants.map((v: any) => ({
                 url: v.url,
                 impressions: v.impressions || 0,
                 clicks: v.clicks || 0,
@@ -720,7 +720,7 @@ FORMAT JSON STRICT :
                 impressionsPercentage: totalImpressions > 0
                   ? ((v.impressions || 0) / totalImpressions) * 100
                   : 0
-              })).sort((a, b) => b.impressions - a.impressions),
+              })).sort((a: any, b: any) => b.impressions - a.impressions),
               totalImpressions,
               totalClicks,
               variantsCount: variants.length

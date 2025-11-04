@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Papa from 'papaparse';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ScatterChart, Scatter, Cell, ResponsiveContainer, PieChart, Pie
@@ -74,6 +73,36 @@ export default function GSCIntentionAnalyzer() {
   const [showEmailPopup, setShowEmailPopup] = useState<boolean>(false);
   const [showBrandQueries, setShowBrandQueries] = useState<boolean>(false);
   const [showAllKeywordsForIntention, setShowAllKeywordsForIntention] = useState<string | null>(null);
+  const [expandedCannibalisation, setExpandedCannibalisation] = useState<string | null>(null);
+  const [cannibalisations, setCannibalisations] = useState<Array<{
+    query: string;
+    totalClicks: number;
+    totalImpressions: number;
+    avgPosition: number;
+    pages: Array<{
+      url: string;
+      position: number;
+      clicks: number;
+      impressions: number;
+      ctr: number;
+    }>;
+  }>>([]);
+
+  const [expandedTechnicalIssue, setExpandedTechnicalIssue] = useState<string | null>(null);
+  const [technicalIssues, setTechnicalIssues] = useState<Array<{
+    query: string;
+    issueTypes: string[];
+    variants: Array<{
+      url: string;
+      impressions: number;
+      clicks: number;
+      position: number;
+      impressionsPercentage: number;
+    }>;
+    totalImpressions: number;
+    totalClicks: number;
+    variantsCount: number;
+  }>>([]);
 
   // États pour connexion GSC OAuth
   const [gscAccessToken, setGscAccessToken] = useState<string>('');
@@ -183,7 +212,8 @@ export default function GSCIntentionAnalyzer() {
           clicks: Number(q.clicks) || 0,
           impressions: Number(q.impressions) || 0,
           ctr: Number(q.ctr) || 0,
-          position: Number(q.position) || 0
+          position: Number(q.position) || 0,
+          pages: q.pages || [] // IMPORTANT: Conserver les pages pour la détection de cannibalisation
         }));
 
       if (cleanedQueries.length === 0) {
@@ -200,66 +230,6 @@ export default function GSCIntentionAnalyzer() {
       setError('Échec de la récupération des données GSC');
       setIsLoadingGsc(false);
     }
-  };
-
-  // Upload CSV
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        try {
-          const firstRow = results.data[0] as any;
-          const columns = firstRow ? Object.keys(firstRow) : [];
-          console.log('🔍 Colonnes détectées:', columns);
-
-          const parsed = results.data.map((row: any) => {
-            const query = row['Requêtes les plus fréquentes'] || row['Requêtes'] || row['Top queries'] || row['Requête'] || row['Query'] || row['query'] || '';
-            const clicks = parseFloat(row['Clicks'] || row['Clics'] || row['clicks'] || '0');
-            const impressions = parseFloat(row['Impressions'] || row['impressions'] || '0');
-
-            // Parser CTR en gérant le symbole %
-            const ctrRaw = row['CTR'] || row['ctr'] || '0';
-            let ctr = 0;
-            if (typeof ctrRaw === 'string' && ctrRaw.includes('%')) {
-              // Si contient %, c'est déjà un pourcentage (ex: "0.22%" ou "22%")
-              ctr = parseFloat(ctrRaw.replace('%', '').replace(',', '.')) / 100;
-            } else {
-              // Sinon, c'est un décimal (ex: 0.22 pour 22% ou 0.0022 pour 0.22%)
-              const ctrValue = parseFloat(String(ctrRaw).replace(',', '.'));
-              ctr = ctrValue > 1 ? ctrValue / 100 : ctrValue;
-            }
-
-            const position = parseFloat(row['Position'] || row['position'] || '0');
-
-            return {
-              query: query.trim(),
-              clicks,
-              impressions,
-              ctr,
-              position
-            };
-          }).filter(q => q.query && q.impressions > 0);
-
-          if (parsed.length === 0) {
-            setError(`Aucune donnée valide trouvée. Colonnes : ${columns.join(', ')}`);
-            return;
-          }
-
-          setQueries(parsed);
-          setError('');
-          console.log(`✅ ${parsed.length} requêtes chargées`);
-        } catch (err) {
-          setError('Erreur parsing CSV : ' + (err instanceof Error ? err.message : 'Unknown error'));
-        }
-      },
-      error: (err) => {
-        setError('Erreur lecture fichier : ' + err.message);
-      }
-    });
   };
 
   // Analyser avec Claude
@@ -317,6 +287,8 @@ export default function GSCIntentionAnalyzer() {
       setAnalysis(data.analysis);
       setClassifiedQueries(data.classifiedQueries);
       setBrandQueries(data.brandQueries || []);
+      setCannibalisations(data.cannibalisations || []);
+      setTechnicalIssues(data.technicalIssues || []);
       setStep(2);
     } catch (err) {
       setError('Erreur analyse : ' + (err instanceof Error ? err.message : 'Unknown error'));
@@ -442,13 +414,13 @@ export default function GSCIntentionAnalyzer() {
     title: { fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 },
     text: { fontFamily: 'Roboto, sans-serif' },
     button: {
-      background: '#000',
-      color: '#f7c724',
-      border: '2px solid #f7c724',
+      background: '#f7c724',
+      color: '#000',
+      border: 'none',
       padding: '12px 24px',
       borderRadius: '8px',
       fontSize: '14px',
-      fontWeight: 600,
+      fontWeight: 'bold',
       cursor: 'pointer',
       fontFamily: 'JetBrains Mono, monospace',
       transition: 'all 0.2s'
@@ -469,30 +441,32 @@ export default function GSCIntentionAnalyzer() {
     return (
       <div style={{ lineHeight: '1.8' }}>
         {sentences.map((sentence, idx) => {
-          // Regex pour détecter les citations
-          const parts = sentence.split(/("([^"]*)"|"([^"]*)")/g);
+          // Regex pour détecter les citations (avec groupes non-capturants)
+          const parts = sentence.split(/("(?:[^"]*)"|"(?:[^"]*)")/g);
 
           return (
             <div key={idx} style={{ marginBottom: idx < sentences.length - 1 ? '12px' : 0 }}>
               <span style={{ ...styles.text, fontSize: '14px' }}>
-                {parts.map((part, partIdx) => {
-                  // Si c'est une citation (requête exemple)
-                  if (/^"[^"]*"$/.test(part) || /^"[^"]*"$/.test(part)) {
-                    return (
-                      <span key={partIdx} style={{
-                        background: 'rgba(247, 199, 36, 0.1)',
-                        padding: '2px 6px',
-                        borderRadius: '3px',
-                        fontStyle: 'italic',
-                        color: '#fdf13e'
-                      }}>
-                        {part}
-                      </span>
-                    );
-                  }
-                  // Texte normal
-                  return <span key={partIdx}>{part}</span>;
-                })}
+                {parts
+                  .filter(part => part && part.trim()) // Filtrer les parties vides
+                  .map((part, partIdx) => {
+                    // Si c'est une citation (requête exemple)
+                    if (/^"[^"]*"$/.test(part) || /^"[^"]*"$/.test(part)) {
+                      return (
+                        <span key={partIdx} style={{
+                          background: 'rgba(247, 199, 36, 0.1)',
+                          padding: '2px 6px',
+                          borderRadius: '3px',
+                          fontStyle: 'italic',
+                          color: '#fdf13e'
+                        }}>
+                          {part}
+                        </span>
+                      );
+                    }
+                    // Texte normal
+                    return <span key={partIdx}>{part}</span>;
+                  })}
                 {idx < sentences.length - 1 && '.'}
               </span>
             </div>
@@ -710,16 +684,8 @@ export default function GSCIntentionAnalyzer() {
             </div>
           )}
 
-          {/* Layout 2 colonnes : Formulaire + GIF Tutoriel */}
-          <div style={{
-            display: 'flex',
-            gap: '40px',
-            alignItems: 'flex-start',
-            flexWrap: 'wrap'
-          }}>
-
-            {/* Colonne gauche : Formulaire */}
-            <div style={{ flex: '1 1 500px', minWidth: '320px' }}>
+          {/* Formulaire */}
+          <div style={{ maxWidth: '800px', margin: '0 auto' }}>
               <div style={{ ...styles.card, marginBottom: '20px' }}>
                 <h2 style={{ ...styles.title, marginTop: 0, color: '#f7c724' }}>
                   📊 ÉTAPE 1 : CHARGEZ VOS DONNÉES
@@ -789,27 +755,37 @@ export default function GSCIntentionAnalyzer() {
                         ...styles.button,
                         width: '100%',
                         padding: '14px',
-                        background: '#4285f4',
-                        border: 'none',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         gap: '10px',
-                        fontSize: '15px',
-                        fontWeight: 600
+                        fontSize: '15px'
                       }}
                       onMouseEnter={(e) => {
                         if (!isLoadingGsc) {
-                          e.currentTarget.style.background = '#3367d6';
+                          e.currentTarget.style.background = '#000';
+                          e.currentTarget.style.color = '#f7c724';
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (!isLoadingGsc) {
-                          e.currentTarget.style.background = '#4285f4';
+                          e.currentTarget.style.background = '#f7c724';
+                          e.currentTarget.style.color = '#000';
                         }
                       }}
                     >
-                      {isLoadingGsc ? '⏳ Connexion...' : '🔗 Connecter Google Search Console'}
+                      {isLoadingGsc ? (
+                        '⏳ Connexion...'
+                      ) : (
+                        <>
+                          <img
+                            src="data:image/png;base64,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"
+                            alt="Google Search Console"
+                            style={{ height: '24px', width: 'auto' }}
+                          />
+                          Connecter Google Search Console
+                        </>
+                      )}
                     </button>
                     <p style={{ ...styles.text, fontSize: '12px', color: '#666', marginTop: '8px', textAlign: 'center' }}>
                       Import direct depuis GSC (12 derniers mois, jusqu'à 25 000 requêtes)
@@ -851,17 +827,18 @@ export default function GSCIntentionAnalyzer() {
                             ...styles.button,
                             width: '100%',
                             padding: '12px',
-                            marginTop: '12px',
-                            background: '#0edd89'
+                            marginTop: '12px'
                           }}
                           onMouseEnter={(e) => {
                             if (!isLoadingGsc) {
-                              e.currentTarget.style.background = '#0cbd6f';
+                              e.currentTarget.style.background = '#000';
+                              e.currentTarget.style.color = '#f7c724';
                             }
                           }}
                           onMouseLeave={(e) => {
                             if (!isLoadingGsc) {
-                              e.currentTarget.style.background = '#0edd89';
+                              e.currentTarget.style.background = '#f7c724';
+                              e.currentTarget.style.color = '#000';
                             }
                           }}
                         >
@@ -870,44 +847,6 @@ export default function GSCIntentionAnalyzer() {
                       )}
                     </div>
                   )}
-
-                  {/* Séparateur */}
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    margin: '20px 0',
-                    gap: '10px'
-                  }}>
-                    <div style={{ flex: 1, height: '1px', background: '#333' }}></div>
-                    <span style={{ ...styles.text, color: '#666', fontSize: '13px' }}>OU</span>
-                    <div style={{ flex: 1, height: '1px', background: '#333' }}></div>
-                  </div>
-
-                  {/* Upload CSV */}
-                  <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
-                    📁 Export CSV Google Search Console
-                  </label>
-                  <p style={{ ...styles.text, fontSize: '15px', color: '#FFA500', marginBottom: '12px', marginTop: '-4px', fontWeight: 600 }}>
-                    💡 Pour des résultats plus fiables, exportez 12 à 16 mois de données
-                  </p>
-                  <input
-                    type="file"
-                    accept=".csv"
-                    onChange={handleFileUpload}
-                    style={{
-                      ...styles.text,
-                      width: '100%',
-                      padding: '12px',
-                      background: '#0a0a0a',
-                      border: '2px dashed #333',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      color: '#999'
-                    }}
-                  />
-                  <p style={{ ...styles.text, fontSize: '12px', color: '#666', marginTop: '8px' }}>
-                    💡 Exportez depuis GSC : Performance → Requêtes → Exporter
-                  </p>
                 </div>
 
                 {queries.length > 0 && (
@@ -940,78 +879,20 @@ export default function GSCIntentionAnalyzer() {
                   }}
                   onMouseEnter={(e) => {
                     if (queries.length > 0 && brand) {
-                      e.currentTarget.style.background = '#f7c724';
-                      e.currentTarget.style.color = '#000';
+                      e.currentTarget.style.background = '#000';
+                      e.currentTarget.style.color = '#f7c724';
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (queries.length > 0 && brand) {
-                      e.currentTarget.style.background = '#000';
-                      e.currentTarget.style.color = '#f7c724';
+                      e.currentTarget.style.background = '#f7c724';
+                      e.currentTarget.style.color = '#000';
                     }
                   }}
                 >
                   {isLoading ? '🔄 ANALYSE EN COURS...' : '🚀 ANALYSER LES INTENTIONS'}
                 </button>
               </div>
-            </div>
-
-            {/* Colonne droite : GIF Tutoriel */}
-            <div style={{ flex: '1 1 400px', minWidth: '320px' }}>
-              <div style={{
-                ...styles.card,
-                padding: '24px',
-                position: 'sticky',
-                top: '20px'
-              }}>
-                <h3 style={{
-                  ...styles.title,
-                  fontSize: '18px',
-                  color: '#f7c724',
-                  marginTop: 0,
-                  marginBottom: '16px'
-                }}>
-                  📖 Comment exporter depuis GSC ?
-                </h3>
-                <p style={{
-                  ...styles.text,
-                  fontSize: '14px',
-                  color: '#999',
-                  marginBottom: '16px',
-                  lineHeight: '1.6'
-                }}>
-                  Suivez ce tutoriel pour exporter vos données depuis Google Search Console :
-                </p>
-                <div style={{
-                  border: '2px solid #333',
-                  borderRadius: '8px',
-                  overflow: 'hidden',
-                  background: '#000'
-                }}>
-                  <img
-                    src="/bon-gif.gif"
-                    alt="Tutoriel export GSC"
-                    style={{
-                      width: '100%',
-                      height: 'auto',
-                      display: 'block'
-                    }}
-                  />
-                </div>
-                <p style={{
-                  ...styles.text,
-                  fontSize: '12px',
-                  color: '#666',
-                  marginTop: '12px',
-                  lineHeight: '1.5'
-                }}>
-                  1️⃣ Allez dans Google Search Console<br />
-                  2️⃣ Performance → Requêtes<br />
-                  3️⃣ Exportez le fichier CSV<br />
-                  4️⃣ Décompressez le ZIP et uploadez le CSV ici
-                </p>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -1295,17 +1176,19 @@ export default function GSCIntentionAnalyzer() {
                             showAllKeywordsForIntention === intention.nom ? null : intention.nom
                           )}
                           style={{
-                            ...styles.text,
+                            ...styles.button,
                             marginTop: '12px',
                             padding: '10px 16px',
-                            background: '#f7c724',
-                            color: '#000',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            fontWeight: 600,
                             fontSize: '12px',
                             width: '100%'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#000';
+                            e.currentTarget.style.color = '#f7c724';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#f7c724';
+                            e.currentTarget.style.color = '#000';
                           }}
                         >
                           {showAllKeywordsForIntention === intention.nom
@@ -1421,13 +1304,21 @@ export default function GSCIntentionAnalyzer() {
               padding: '12px 16px',
               marginBottom: '20px'
             }}>
-              <div style={{ ...styles.text, fontSize: '13px', color: '#fdf13e', marginBottom: '6px' }}>
-                ⚠️ <strong>Disclaimer</strong>
+              <div style={{ ...styles.text, fontSize: '13px', color: '#fdf13e', marginBottom: '8px' }}>
+                ⚠️ <strong>Disclaimer & Méthodologie</strong>
               </div>
-              <div style={{ ...styles.text, fontSize: '12px', color: '#ccc', lineHeight: '1.5' }}>
-                Les positions moyennes de la Search Console <strong>ne reflètent pas l'ensemble de la SERP</strong> car elles excluent les fonctionnalités SERP (featured snippets, PAA, local pack, images, etc.).
-                Ces données constituent néanmoins un <strong>bon premier indicateur</strong> pour estimer le trafic potentiel et identifier les opportunités d'optimisation.
-                Pour une analyse complète, croisez avec des données externes (Semrush, Ahrefs, etc.).
+              <div style={{ ...styles.text, fontSize: '12px', color: '#ccc', lineHeight: '1.6' }}>
+                <strong>Limitations des données GSC :</strong><br />
+                • Les positions moyennes <strong>ne reflètent pas l'ensemble de la SERP</strong> (excluent featured snippets, PAA, local pack, images, etc.)<br />
+                • Ces données constituent un <strong>bon premier indicateur</strong> pour estimer le trafic potentiel<br />
+                • Pour une analyse complète, croisez avec des données externes (Semrush, Ahrefs, etc.)<br />
+                <br />
+                <strong>Affichage des CTR dans la matrice :</strong><br />
+                • <strong>CTR visible</strong> : Cellules avec ≥100 impressions OU ≥10 clics (échantillon statistiquement fiable)<br />
+                • <strong>"N/A" affiché</strong> : Cellules avec moins de 100 impressions ET moins de 10 clics (échantillon trop faible, CTR non représentatif)<br />
+                • Le nombre de requêtes par cellule est toujours affiché, même si le CTR est marqué "N/A"<br />
+                <br />
+                <strong>Note :</strong> Le nombre total de requêtes dans la matrice peut différer du total indiqué dans "Détails par intention" si certaines requêtes ont des positions invalides ou manquantes.
               </div>
             </div>
             <div style={{ overflowX: 'auto' }}>
@@ -1634,6 +1525,417 @@ export default function GSCIntentionAnalyzer() {
               </div>
             </div>
           )}
+
+          {/* Section Cannibalisations */}
+          <div style={{
+            ...styles.card,
+            marginBottom: '30px',
+            borderLeft: cannibalisations.length > 0 ? '4px solid #ef4444' : '4px solid #0edd89'
+          }}>
+            <h3 style={{
+              ...styles.title,
+              marginTop: 0,
+              color: cannibalisations.length > 0 ? '#ef4444' : '#0edd89',
+              fontSize: '18px'
+            }}>
+              {cannibalisations.length > 0 ? '⚠️ DANGERS POTENTIELS DE CANNIBALISATION' : '✅ ANALYSE DE CANNIBALISATION'}
+            </h3>
+
+            {cannibalisations.length > 0 ? (
+              <>
+                <p style={{ ...styles.text, color: '#ccc', fontSize: '14px', marginBottom: '10px' }}>
+                  <strong>Top {cannibalisations.length} requête{cannibalisations.length > 1 ? 's' : ''} les plus impactantes</strong> pour lesquelles plusieurs URLs de votre site sont en compétition dans le top 20.
+                  Cliquez sur chaque requête pour voir les détails. Cela peut diluer votre autorité et créer de l'instabilité dans les positions.
+                </p>
+                <div style={{
+                  background: '#2a1a1a',
+                  border: '1px solid #ef4444',
+                  borderRadius: '6px',
+                  padding: '12px',
+                  marginBottom: '15px',
+                  fontSize: '12px',
+                  lineHeight: '1.6'
+                }}>
+                  <div style={{ color: '#ef4444', fontWeight: 'bold', marginBottom: '6px' }}>
+                    🔍 Méthodologie de détection :
+                  </div>
+                  <div style={{ color: '#ccc' }}>
+                    • <strong>≥5% des impressions</strong> de la requête par URL (part significative)<br />
+                    • <strong>Position 1-20</strong> sur Google (compétition visible)<br />
+                    • <strong>2+ URLs</strong> captant chacune ≥5% des impressions<br />
+                    <div style={{ marginTop: '8px', fontSize: '11px', color: '#999', fontStyle: 'italic' }}>
+                      → Les données sont présentées pour que vous puissiez arbitrer selon votre contexte
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{
+                background: '#0f2a1a',
+                border: '1px solid #0edd89',
+                padding: '15px',
+                borderRadius: '8px',
+                marginBottom: '15px'
+              }}>
+                <p style={{ ...styles.text, color: '#0edd89', fontSize: '14px', marginBottom: '8px', fontWeight: 'bold' }}>
+                  🎉 Aucune cannibalisation détectée !
+                </p>
+                <p style={{ ...styles.text, color: '#ccc', fontSize: '13px', lineHeight: '1.6' }}>
+                  Excellente nouvelle : aucune requête n'a plusieurs URLs en compétition dans le top 20.
+                  Cela signifie que votre architecture de contenu est bien organisée et que vous ne diluez pas votre autorité
+                  en faisant concourir plusieurs pages sur les mêmes intentions de recherche.
+                </p>
+              </div>
+            )}
+
+            {cannibalisations.length > 0 && (
+              <>
+
+              {/* Métriques globales */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+                <div>
+                  <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>Requêtes concernées</div>
+                  <div style={{ ...styles.title, fontSize: '20px', color: '#ef4444' }}>
+                    {cannibalisations.length}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>URLs en compétition</div>
+                  <div style={{ ...styles.title, fontSize: '20px', color: '#ef4444' }}>
+                    {cannibalisations.reduce((sum, c) => sum + (c.urlsCount || c.pages.length), 0).toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>Impressions totales</div>
+                  <div style={{ ...styles.title, fontSize: '20px', color: '#ef4444' }}>
+                    {cannibalisations.reduce((sum, c) => sum + c.totalImpressions, 0).toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>Clics totaux</div>
+                  <div style={{ ...styles.title, fontSize: '20px', color: '#ef4444' }}>
+                    {cannibalisations.reduce((sum, c) => sum + c.totalClicks, 0).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Liste des cannibalisations (accordéon) - Query-centric */}
+              <div style={{ marginTop: '20px' }}>
+                {cannibalisations.map((cannibal, idx) => {
+                  const isExpanded = expandedCannibalisation === cannibal.query;
+                  const urlsCount = cannibal.urlsCount || cannibal.pages.length;
+
+                  return (
+                    <div key={idx} style={{
+                      background: '#1a0a0a',
+                      border: '1px solid #ef4444',
+                      borderRadius: '8px',
+                      marginBottom: '12px',
+                      overflow: 'hidden'
+                    }}>
+                      <div
+                        onClick={() => setExpandedCannibalisation(isExpanded ? null : cannibal.query)}
+                        style={{
+                          padding: '16px',
+                          cursor: 'pointer',
+                          borderLeft: '4px solid #ef4444',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          background: isExpanded ? '#2a1a1a' : 'transparent'
+                        }}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <strong style={{ ...styles.title, color: '#fdf13e', fontSize: '14px', fontStyle: 'italic' }}>
+                            "{cannibal.query}"
+                          </strong>
+                          <div style={{ ...styles.text, fontSize: '11px', color: '#999', marginTop: '4px' }}>
+                            {urlsCount} URL{urlsCount > 1 ? 's' : ''} en compétition •
+                            {cannibal.totalClicks.toLocaleString()} clics •
+                            {cannibal.totalImpressions.toLocaleString()} impressions •
+                            Position moy: {cannibal.avgPosition.toFixed(1)}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '20px', marginLeft: '16px' }}>
+                          {isExpanded ? '▼' : '▶'}
+                        </div>
+                      </div>
+
+                      {/* Détails des URLs en compétition */}
+                      {isExpanded && (
+                        <div style={{ padding: '16px', borderTop: '1px solid #333' }}>
+                          <div style={{ ...styles.text, fontSize: '12px', color: '#ef4444', marginBottom: '12px' }}>
+                            🔍 URLs détectées en compétition :
+                          </div>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                            <thead>
+                              <tr style={{ background: '#1a1a1a' }}>
+                                <th style={{ ...styles.title, padding: '10px', textAlign: 'left', borderBottom: '1px solid #333' }}>
+                                  URL
+                                </th>
+                                <th style={{ ...styles.title, padding: '10px', textAlign: 'center', borderBottom: '1px solid #333' }}>
+                                  Position
+                                </th>
+                                <th style={{ ...styles.title, padding: '10px', textAlign: 'center', borderBottom: '1px solid #333' }}>
+                                  Clics
+                                </th>
+                                <th style={{ ...styles.title, padding: '10px', textAlign: 'center', borderBottom: '1px solid #333' }}>
+                                  Impressions
+                                </th>
+                                <th style={{ ...styles.title, padding: '10px', textAlign: 'center', borderBottom: '1px solid #333' }}>
+                                  % Impr.
+                                </th>
+                                <th style={{ ...styles.title, padding: '10px', textAlign: 'center', borderBottom: '1px solid #333' }}>
+                                  CTR
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cannibal.pages
+                                .sort((a, b) => b.impressionsPercentage - a.impressionsPercentage)
+                                .map((page, pageIdx) => (
+                                  <tr key={pageIdx} style={{ background: pageIdx % 2 === 0 ? '#0a0a0a' : '#121212' }}>
+                                    <td style={{
+                                      ...styles.text,
+                                      padding: '10px',
+                                      borderBottom: '1px solid #222',
+                                      maxWidth: '300px',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap'
+                                    }}>
+                                      <a
+                                        href={page.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{
+                                          color: pageIdx === 0 ? '#0edd89' : '#ef4444',
+                                          textDecoration: 'none',
+                                          transition: 'opacity 0.2s'
+                                        }}
+                                        onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                                        onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                                      >
+                                        {page.url}
+                                      </a>
+                                    </td>
+                                    <td style={{
+                                      ...styles.text,
+                                      padding: '10px',
+                                      textAlign: 'center',
+                                      borderBottom: '1px solid #222',
+                                      fontWeight: pageIdx === 0 ? 'bold' : 'normal',
+                                      color: pageIdx === 0 ? '#0edd89' : 'inherit'
+                                    }}>
+                                      {page.position.toFixed(1)}
+                                      {pageIdx === 0 && ' 👑'}
+                                    </td>
+                                    <td style={{ ...styles.text, padding: '10px', textAlign: 'center', borderBottom: '1px solid #222' }}>
+                                      {page.clicks}
+                                    </td>
+                                    <td style={{ ...styles.text, padding: '10px', textAlign: 'center', borderBottom: '1px solid #222' }}>
+                                      {page.impressions}
+                                    </td>
+                                    <td style={{
+                                      ...styles.text,
+                                      padding: '10px',
+                                      textAlign: 'center',
+                                      borderBottom: '1px solid #222',
+                                      fontWeight: 'bold',
+                                      color: '#ef4444'
+                                    }}>
+                                      {page.impressionsPercentage.toFixed(1)}%
+                                    </td>
+                                    <td style={{ ...styles.text, padding: '10px', textAlign: 'center', borderBottom: '1px solid #222' }}>
+                                      {(page.ctr * 100).toFixed(1)}%
+                                    </td>
+                                  </tr>
+                                ))}
+                            </tbody>
+                          </table>
+                          <div style={{
+                            ...styles.text,
+                            fontSize: '11px',
+                            color: '#666',
+                            marginTop: '12px',
+                            padding: '10px',
+                            background: '#0a0a0a',
+                            borderRadius: '6px',
+                            borderLeft: '3px solid #f7c724'
+                          }}>
+                            💡 <strong style={{ color: '#f7c724' }}>Recommandation :</strong> Consolidez le contenu sur l'URL leader (👑)
+                            et redirigez ou différenciez les autres URLs pour éviter la compétition interne.
+                            Le % d'impressions indique la part de visibilité de chaque URL.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              </>
+            )}
+          </div>
+
+          {/* SECTION : PROBLÈMES TECHNIQUES D'URL */}
+          <div style={{
+            background: '#1a1a1a',
+            padding: '20px',
+            borderRadius: '8px',
+            marginBottom: '30px',
+            borderLeft: technicalIssues.length > 0 ? '4px solid #fb923c' : '4px solid #0edd89'
+          }}>
+            <h3 style={{
+              ...styles.title,
+              marginTop: 0,
+              color: technicalIssues.length > 0 ? '#fb923c' : '#0edd89',
+              fontSize: '18px'
+            }}>
+              {technicalIssues.length > 0 ? '🔧 PROBLÈMES TECHNIQUES D\'URL' : '✅ CONFIGURATION TECHNIQUE'}
+            </h3>
+
+            {technicalIssues.length > 0 ? (
+              <>
+                <p style={{ ...styles.text, color: '#ccc', fontSize: '14px', marginBottom: '10px' }}>
+                  <strong>Top {technicalIssues.length} problème{technicalIssues.length > 1 ? 's' : ''} technique{technicalIssues.length > 1 ? 's' : ''}</strong> détecté{technicalIssues.length > 1 ? 's' : ''} : variantes d'URL pour la même page (www/non-www, trailing slash, http/https).
+                  Ces problèmes indiquent l'absence de <strong>redirections 301</strong> et causent une dilution de votre autorité SEO.
+                </p>
+                <div style={{
+                  background: '#2a1a1a',
+                  border: '1px solid #fb923c',
+                  borderRadius: '6px',
+                  padding: '15px',
+                  marginBottom: '15px'
+                }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+                    <div>
+                      <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>Problèmes détectés</div>
+                      <div style={{ ...styles.title, fontSize: '20px', color: '#fb923c' }}>
+                        {technicalIssues.length}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>Variantes d'URL</div>
+                      <div style={{ ...styles.title, fontSize: '20px', color: '#fb923c' }}>
+                        {technicalIssues.reduce((sum, i) => sum + i.variantsCount, 0)}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>Impressions affectées</div>
+                      <div style={{ ...styles.title, fontSize: '20px', color: '#fb923c' }}>
+                        {technicalIssues.reduce((sum, i) => sum + i.totalImpressions, 0).toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>Clics affectés</div>
+                      <div style={{ ...styles.title, fontSize: '20px', color: '#fb923c' }}>
+                        {technicalIssues.reduce((sum, i) => sum + i.totalClicks, 0).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Liste des problèmes */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {technicalIssues.map((issue, idx) => {
+                    const isExpanded = expandedTechnicalIssue === issue.query;
+
+                    return (
+                      <div key={idx} style={{
+                        background: '#1a1a1a',
+                        border: '1px solid #fb923c',
+                        borderRadius: '6px',
+                        overflow: 'hidden'
+                      }}>
+                        <div onClick={() => setExpandedTechnicalIssue(isExpanded ? null : issue.query)} style={{
+                          padding: '15px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          transition: 'background 0.2s',
+                          background: isExpanded ? '#2a2020' : 'transparent'
+                        }}>
+                          <div style={{ flex: 1 }}>
+                            <strong style={{ ...styles.title, color: '#fdf13e', fontSize: '14px', fontStyle: 'italic' }}>
+                              "{issue.query}"
+                            </strong>
+                            <div style={{ ...styles.text, fontSize: '11px', color: '#999', marginTop: '4px' }}>
+                              {issue.variantsCount} variante{issue.variantsCount > 1 ? 's' : ''} •
+                              {issue.issueTypes.map(t => {
+                                if (t === 'www/non-www') return ' www/non-www';
+                                if (t === 'trailing-slash') return ' trailing slash';
+                                if (t === 'http-https') return ' http/https';
+                                return '';
+                              }).join(' •')} •
+                              {issue.totalClicks.toLocaleString()} clics •
+                              {issue.totalImpressions.toLocaleString()} impressions
+                            </div>
+                          </div>
+                          <div style={{ ...styles.text, fontSize: '18px', color: '#fb923c' }}>
+                            {isExpanded ? '▲' : '▼'}
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div style={{
+                            padding: '15px',
+                            borderTop: '1px solid #fb923c',
+                            background: '#0f0f0f'
+                          }}>
+                            <div style={{ ...styles.text, fontSize: '12px', color: '#fb923c', marginBottom: '10px' }}>
+                              🔧 <strong>Variantes d'URL détectées :</strong>
+                            </div>
+                            <table style={{
+                              width: '100%',
+                              borderCollapse: 'collapse',
+                              fontSize: '12px',
+                              color: '#ccc'
+                            }}>
+                              <thead>
+                                <tr style={{ borderBottom: '1px solid #444' }}>
+                                  <th style={{ textAlign: 'left', padding: '8px', color: '#999' }}>URL</th>
+                                  <th style={{ textAlign: 'center', padding: '8px', color: '#999' }}>Position</th>
+                                  <th style={{ textAlign: 'center', padding: '8px', color: '#999' }}>Clics</th>
+                                  <th style={{ textAlign: 'center', padding: '8px', color: '#999' }}>Impressions</th>
+                                  <th style={{ textAlign: 'center', padding: '8px', color: '#999' }}>% Impr.</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {issue.variants.map((variant, variantIdx) => (
+                                  <tr key={variantIdx} style={{ borderBottom: '1px solid #333' }}>
+                                    <td style={{ padding: '8px', wordBreak: 'break-all' }}>
+                                      <a href={variant.url} target="_blank" rel="noopener noreferrer" style={{ color: '#fb923c', textDecoration: 'none' }}>
+                                        {variant.url}
+                                      </a>
+                                    </td>
+                                    <td style={{ textAlign: 'center', padding: '8px' }}>
+                                      {variant.position.toFixed(1)} {variantIdx === 0 && ' 👑'}
+                                    </td>
+                                    <td style={{ textAlign: 'center', padding: '8px' }}>{variant.clicks}</td>
+                                    <td style={{ textAlign: 'center', padding: '8px' }}>{variant.impressions}</td>
+                                    <td style={{ textAlign: 'center', padding: '8px' }}>{variant.impressionsPercentage.toFixed(1)}%</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            <div style={{ ...styles.text, fontSize: '12px', color: '#fb923c', marginTop: '15px', padding: '10px', background: '#2a1a1a', borderRadius: '4px', borderLeft: '3px solid #fb923c' }}>
+                              💡 <strong>Recommandation :</strong> Choisissez une URL canonique (👑) et mettez en place des <strong>redirections 301</strong> depuis toutes les variantes vers l'URL choisie.
+                              Cela consolidera votre autorité SEO et évitera la dilution de vos signaux.
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <p style={{ ...styles.text, color: '#0edd89', fontSize: '14px', margin: 0 }}>
+                ✅ Aucun problème technique d'URL détecté. Vos redirections semblent correctement configurées.
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Popup Email Substack */}

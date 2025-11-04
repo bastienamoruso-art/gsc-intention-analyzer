@@ -39,7 +39,8 @@ export async function POST(request: NextRequest) {
       clicks: q.clicks,
       impressions: q.impressions,
       ctr: q.ctr,
-      position: q.position
+      position: q.position,
+      pages: q.pages || [] // Garder les pages pour détection cannibalisation
     }));
 
     // ========================================
@@ -158,17 +159,38 @@ ANALYSE REQUISE
    - Modificateurs temporels (2024, 2025)
    - Termes comparatifs (vs, ou, meilleur)
 
-3. **INSIGHTS STRATÉGIQUES** (DÉTAILLÉS ET ACTIONNABLES)
-   - biggest_opportunity : Décris EN DÉTAIL (2-3 phrases minimum) l'opportunité principale avec des EXEMPLES CONCRETS de requêtes et des CHIFFRES précis issus des données (volume, position, CTR). Explique POURQUOI c'est une opportunité et COMMENT la saisir. NE PAS inclure d'estimations de clics potentiels.
-   - biggest_friction : Décris EN DÉTAIL (2-3 phrases minimum) la friction principale avec des EXEMPLES CONCRETS de requêtes et des CHIFFRES précis issus des données (volume, position, CTR). Explique POURQUOI c'est une friction et COMMENT la résoudre. NE PAS inclure d'estimations de clics perdus.
-   - quick_win : Décris EN DÉTAIL (2-3 phrases minimum) une action rapide et concrète à mettre en place IMMÉDIATEMENT, avec des EXEMPLES précis de requêtes concernées. Focus sur la RECOMMANDATION ACTIONNABLE, pas sur l'impact chiffré estimé.
+3. **INSIGHTS STRATÉGIQUES** (NIVEAU 2025 - ANALYSE DATA-DRIVEN)
 
-CONTRAINTES IMPORTANTES :
-- NE JAMAIS recommander de capitaliser sur des fautes d'orthographe - c'est une pratique black-hat interdite
-- NE JAMAIS suggérer de créer des URLs spécifiques sans savoir si elles existent déjà - reste sur des recommandations stratégiques de haut niveau
-- Privilégier les recommandations WHITE-HAT : optimisation de contenu existant, amélioration de la pertinence, structure de l'information
-- Les insights doivent être RICHES, DÉTAILLÉS et contenir des DONNÉES CHIFFRÉES issues de l'analyse (exemples de requêtes, volumes, positions, CTR)
-- NE PAS inclure d'estimations de clics futurs ou potentiels (ex: "+300 clics", "récupérer 80 clics") - se concentrer sur les RECOMMANDATIONS ACTIONNABLES
+   - biggest_opportunity : Identifie l'opportunité STRATÉGIQUE la plus impactante en analysant :
+     * Les écarts de performance (ex: requêtes similaires avec CTR 10x différents = problème d'alignement intention/contenu)
+     * Les segments sous-exploités avec fort potentiel (ex: queries haute intention commerciale en P4-10 avec bon CTR)
+     * Les opportunités de différenciation (ex: requêtes spécifiques où le site performe mieux que sur le générique)
+     → Fournis des EXEMPLES CONCRETS avec CHIFFRES (requêtes, positions, CTR, volumes)
+     → Explique le POURQUOI stratégique et propose une approche MODERNE (pas "ajoutez des mots-clés")
+
+   - biggest_friction : Identifie le problème SYSTÉMIQUE le plus pénalisant :
+     * Misalignment intention/contenu (ex: CTR faible malgré bonne position = contenu inadapté)
+     * Cannibalisation ou dilution (ex: trafic dispersé sur requêtes génériques vs concentré sur spécifiques)
+     * Architecture ou expérience problématique (révélée par les patterns de CTR/position)
+     → Fournis des EXEMPLES avec CHIFFRES et CONTRASTES (ex: "requête A : CTR 1% vs requête B similaire : CTR 20%")
+     → Explique l'IMPACT BUSINESS et la solution STRATÉGIQUE
+
+   - quick_win : Propose une action CONCRÈTE et MODERNE à impact rapide :
+     * Réorganisation de l'information pour mieux matcher l'intention dominante
+     * Amélioration de l'expérience utilisateur basée sur les signaux comportementaux (CTR, engagement)
+     * Consolidation ou différenciation stratégique de contenu
+     → PAS de conseils basiques type "ajoutez X dans le title" ou "optimisez les balises"
+     → Focus sur l'EXPÉRIENCE UTILISATEUR et l'ALIGNEMENT INTENTION, pas la technique SEO 2015
+     → Fournis des EXEMPLES précis avec DONNÉES
+
+CONTRAINTES STRICTES 2025 :
+- ❌ JAMAIS de recommandations techniques basiques (title, H1, meta description, etc.)
+- ❌ JAMAIS de "créez une page pour X" sans contexte
+- ❌ JAMAIS de capitalisation sur fautes d'orthographe
+- ❌ JAMAIS d'estimations chiffrées ("+ X clics", "récupérer Y clics")
+- ✅ Focus sur STRATÉGIE, EXPÉRIENCE UTILISATEUR, ALIGNEMENT INTENTION
+- ✅ Recommandations basées sur l'ANALYSE DES ÉCARTS DE PERFORMANCE
+- ✅ Approche DATA-DRIVEN avec exemples concrets et chiffres issus des données
 
 FORMAT JSON STRICT :
 {
@@ -234,6 +256,35 @@ FORMAT JSON STRICT :
     // PROMPT 2 : Contrôle qualité quick wins
     // ========================================
 
+    // Fonction pour normaliser une query (tri alphabétique des mots)
+    // Exemple : "escape game paris pas cher" → "cher escape game paris pas"
+    function normalizeQuery(query: string): string {
+      return query.toLowerCase()
+        .split(' ')
+        .filter(w => w.length > 0)
+        .sort()
+        .join(' ');
+    }
+
+    // Normaliser les URLs pour fusionner les variantes (avec/sans www, trailing slash, etc.)
+    function normalizeUrl(url: string): string {
+      try {
+        let normalized = url.toLowerCase().trim();
+
+        // Retirer le trailing slash
+        if (normalized.endsWith('/')) {
+          normalized = normalized.slice(0, -1);
+        }
+
+        // Retirer le www. pour unifier les variantes
+        normalized = normalized.replace(/^(https?:\/\/)www\./, '$1');
+
+        return normalized;
+      } catch (e) {
+        return url; // En cas d'erreur, retourner l'URL originale
+      }
+    }
+
     // Préparer les requêtes pour chaque intention (avec toutes les données)
     // Utilise la MÊME logique que la classification finale pour cohérence
     const intentionQueries = analysis.intentions.map((intention: any) => {
@@ -246,16 +297,37 @@ FORMAT JSON STRICT :
         return confidence >= 0.4;
       });
 
-      // FILTRAGE STRICT : Positions 5-20 UNIQUEMENT + Volume minimum
+      // FILTRAGE STRICT : Positions 4-20 UNIQUEMENT + Volume minimum
       const quickWinCandidates = relatedQueries.filter(q =>
-        q.position >= 5 &&
+        q.position >= 4 &&
         q.position <= 20 &&
         q.impressions >= 100
       );
 
+      // DÉDUPLICATION : Supprimer les permutations de mots identiques
+      // Ex: "escape game paris pas cher" et "escape game pas cher paris" → 1 seule
+      const seenNormalized = new Map();
+
+      quickWinCandidates.forEach(q => {
+        const normalized = normalizeQuery(q.query);
+
+        if (!seenNormalized.has(normalized)) {
+          seenNormalized.set(normalized, q);
+        } else {
+          // Garder celle avec le plus d'impressions
+          const existing = seenNormalized.get(normalized);
+          if (q.impressions > existing.impressions) {
+            seenNormalized.set(normalized, q);
+          }
+        }
+      });
+
+      // Convertir Map en array
+      const dedupedCandidates = Array.from(seenNormalized.values());
+
       return {
         intention: intention.nom,
-        queries: quickWinCandidates.map(q => ({
+        queries: dedupedCandidates.map(q => ({
           query: q.query,
           position: q.position,
           clicks: q.clicks,
@@ -272,10 +344,10 @@ CONTEXTE
 - Marque : ${brand || 'non spécifiée'}
 - Secteur : ${sector || 'non spécifié'}
 
-INTENTIONS IDENTIFIÉES ET LEURS QUICK WINS CANDIDATS (positions 5-20 uniquement)
+INTENTIONS IDENTIFIÉES ET LEURS QUICK WINS CANDIDATS (positions 4-20 uniquement)
 ${analysis.intentions.map((int: any, idx: number) => `
 ${idx + 1}. ${int.nom} (${int.description})
-   Candidats quick wins (${intentionQueries[idx].queries.length} requêtes en P5-20):
+   Candidats quick wins (${intentionQueries[idx].queries.length} requêtes en P4-20):
    ${intentionQueries[idx].queries.slice(0, 30).map((q: any) =>
      `   "${q.query}" | Pos: ${q.position.toFixed(1)} | Clics: ${q.clicks} | Imp: ${q.impressions}`
    ).join('\n')}
@@ -285,16 +357,25 @@ MISSION : Sélectionner les 10 meilleurs quick wins par intention (MAXIMUM 10)
 
 RÈGLES DE SÉLECTION STRICTES :
 
-1. **DÉDUPLICATION SÉMANTIQUE OBLIGATOIRE**
-   - NE JAMAIS sélectionner plusieurs queries quasi-identiques qui ciblent la même SERP
-   - Exemples de doublons À ÉVITER :
-     ❌ "vélo pour enfant" ET "vélo pour enfants" → MÊME SERP
-     ❌ "restaurant paris 11" ET "restaurant paris 11eme" → MÊME SERP
-   - Si plusieurs queries similaires : GARDER SEULEMENT celle avec le PLUS d'impressions
+1. **DÉDUPLICATION : Supprimer les VRAIS doublons uniquement**
+
+   **À SUPPRIMER (même SERP):**
+   - Permutations de mots : ❌ "logiciel gestion stock gratuit" ET "logiciel gratuit gestion stock"
+   - Pluriel/singulier : ❌ "vélo pour enfant" ET "vélo pour enfants"
+   - Variantes orthographiques : ❌ "restaurant paris 11" ET "restaurant paris 11eme"
+   - Synonymes mineurs : ❌ "formation en ligne" ET "formation online"
+   → Si doublon détecté : GARDER celle avec le PLUS d'impressions
+
+   **À GARDER (SERP différentes):**
+   - Nombres/quantités différents : ✅ "table 2 personnes" ET "table 6 personnes"
+   - Modificateurs de qualité : ✅ "hotel paris" ET "meilleur hotel paris" ET "hotel luxe paris"
+   - Niveaux/types différents : ✅ "formation debutant" ET "formation avancée"
+   - Prix différents : ✅ "prestation pas cher" ET "prestation premium"
+   → Ce ne sont PAS des doublons, ce sont des opportunités distinctes pour des audiences différentes
 
 2. **PRIORISATION**
    - Volume élevé (impressions > 500 idéal)
-   - Position entre 5 et 15 (meilleur potentiel de progression)
+   - Position entre 4 et 15 (meilleur potentiel de progression)
    - CTR faible/moyen (< 10% = opportunité)
 
 3. **LIMITE ABSOLUE : 10 quick wins MAXIMUM par intention - PAS PLUS**
@@ -396,11 +477,15 @@ IMPORTANT :
     // Étape 3 : Claude affine les queries douteuses (si il y en a)
     let refinedDoubtful = doubtful;
 
-    if (doubtful.length > 0) {
-      // Limiter à 200 queries max pour éviter timeout - prendre les plus volumineuses
+    // DÉSACTIVÉ TEMPORAIREMENT - Problème de troncation JSON avec gros datasets
+    // On garde uniquement la classification algorithmique pour éviter les erreurs
+    const SKIP_CLAUDE_REFINEMENT = true;
+
+    if (doubtful.length > 0 && !SKIP_CLAUDE_REFINEMENT) {
+      // Limiter à 20 queries max pour éviter JSON truncation - prendre les plus volumineuses
       const doubtfulToRefine = doubtful
         .sort((a, b) => b.impressions - a.impressions)
-        .slice(0, 200);
+        .slice(0, 20);
 
       const prompt3 = `Tu es un expert SEO chargé d'affiner la classification de requêtes.
 
@@ -440,7 +525,7 @@ FORMAT JSON STRICT :
       try {
         const message3 = await anthropic.messages.create({
           model: 'claude-sonnet-4-5',
-          max_tokens: 8192,
+          max_tokens: 16384,
           messages: [{ role: 'user', content: prompt3 }]
         });
 
@@ -482,10 +567,190 @@ FORMAT JSON STRICT :
       ...lowConfidence.map(q => ({ ...q, intention: 'Non classifiée', confidence: 0 }))
     ];
 
+    // ========================================
+    // DÉTECTION CANNIBALISATION
+    // ========================================
+
+    // DÉDUPLICATION : Supprimer les permutations de mots identiques
+    // Ex: "escape game paris a 2" et "escape game a 2 paris" → 1 seule
+    const seenNormalizedCannib = new Map();
+
+    queryData.forEach(q => {
+      const normalized = normalizeQuery(q.query);
+
+      if (!seenNormalizedCannib.has(normalized)) {
+        seenNormalizedCannib.set(normalized, q);
+      } else {
+        // Garder celle avec le plus d'impressions
+        const existing = seenNormalizedCannib.get(normalized);
+        if (q.impressions > existing.impressions) {
+          seenNormalizedCannib.set(normalized, q);
+        }
+      }
+    });
+
+    // Convertir Map en array
+    const dedupedQueryData = Array.from(seenNormalizedCannib.values());
+
+    // APPROCHE PAR REQUÊTE : Identifier les requêtes avec cannibalisation
+    // Pour chaque requête, montrer quelles URLs se battent
+    const cannibalisationsByQuery = dedupedQueryData
+      .filter(q => {
+        if (!q.pages || q.pages.length <= 1) return false;
+
+        // Pages significatives (≥5% impressions, position 1-20)
+        const significantPages = q.pages
+          .filter(p => p.position >= 1 && p.position <= 20)
+          .map(p => ({
+            ...p,
+            impressionsPercentage: (p.impressions / q.impressions) * 100
+          }))
+          .filter(p => p.impressionsPercentage >= 5);
+
+        return significantPages.length >= 2;
+      })
+      .map(q => {
+        const pagesInTop20 = q.pages
+          .filter(p => p.position >= 1 && p.position <= 20)
+          .map(p => ({
+            url: p.url,
+            position: p.position,
+            clicks: p.clicks,
+            impressions: p.impressions,
+            ctr: p.impressions > 0 ? (p.clicks / p.impressions) : 0,
+            impressionsPercentage: (p.impressions / q.impressions) * 100
+          }))
+          .filter(p => p.impressionsPercentage >= 5)
+          .sort((a, b) => b.impressionsPercentage - a.impressionsPercentage);
+
+        return {
+          query: q.query,
+          totalClicks: q.clicks,
+          totalImpressions: q.impressions,
+          avgPosition: q.position,
+          urlsCount: pagesInTop20.length,
+          pages: pagesInTop20
+        };
+      });
+
+    // Calculer totaux pour filtrage adaptatif
+    const totalCannibImpressions = cannibalisationsByQuery.reduce(
+      (sum, c) => sum + c.totalImpressions, 0
+    );
+
+    // FILTRAGE ADAPTATIF : Ne garder que les requêtes vraiment problématiques
+    const cannibalisations = cannibalisationsByQuery
+      .filter(c => {
+        const impressionShare = (c.totalImpressions / totalCannibImpressions) * 100;
+
+        // Critère 1 : Au moins 3 URLs en compétition (cannibalisation sérieuse)
+        const hasManyCompetitors = c.urlsCount >= 3;
+
+        // Critère 2 : Capte au moins 1% des impressions en cannibalisation
+        const hasSignificantImpact = impressionShare >= 1;
+
+        // Garder si au moins un critère est rempli
+        return hasManyCompetitors || hasSignificantImpact;
+      })
+      .sort((a, b) => b.totalImpressions - a.totalImpressions) // Trier par impact (impressions)
+      .slice(0, 20); // Limiter au top 20 requêtes les plus impactantes
+
+    console.log(`Cannibalisations detected: ${cannibalisations.length} queries with multiple competing URLs`);
+
+    // ========================================
+    // DÉTECTION PROBLÈMES TECHNIQUES D'URL
+    // ========================================
+    // Identifier les variantes techniques d'une même URL (www/non-www, trailing slash, http/https)
+    // Ces problèmes indiquent l'absence de redirections 301 et causent une dilution du SEO
+
+    const technicalIssues: any[] = [];
+
+    // Parcourir toutes les requêtes avec leurs pages
+    queryData.forEach(q => {
+      if (!q.pages || q.pages.length <= 1) return;
+
+      const pagesInTop20 = q.pages.filter(p => p.position >= 1 && p.position <= 20);
+      if (pagesInTop20.length <= 1) return;
+
+      // Grouper les URLs par version normalisée
+      const urlGroups = new Map<string, any[]>();
+
+      pagesInTop20.forEach(page => {
+        const normalized = normalizeUrl(page.url);
+        if (!urlGroups.has(normalized)) {
+          urlGroups.set(normalized, []);
+        }
+        urlGroups.get(normalized)!.push(page);
+      });
+
+      // Trouver les groupes avec plusieurs variantes techniques
+      urlGroups.forEach((variants, normalized) => {
+        if (variants.length >= 2) {
+          // Détecter le type de problème
+          const urls = variants.map(v => v.url);
+          const issueTypes: string[] = [];
+
+          // Vérifier www/non-www
+          const hasWww = urls.some(u => u.includes('://www.'));
+          const hasNonWww = urls.some(u => !u.includes('://www.') && u.startsWith('http'));
+          if (hasWww && hasNonWww) issueTypes.push('www/non-www');
+
+          // Vérifier trailing slash
+          const hasTrailing = urls.some(u => u.endsWith('/'));
+          const hasNoTrailing = urls.some(u => !u.endsWith('/'));
+          if (hasTrailing && hasNoTrailing) issueTypes.push('trailing-slash');
+
+          // Vérifier http/https
+          const hasHttp = urls.some(u => u.startsWith('http://'));
+          const hasHttps = urls.some(u => u.startsWith('https://'));
+          if (hasHttp && hasHttps) issueTypes.push('http-https');
+
+          if (issueTypes.length > 0) {
+            const totalImpressions = variants.reduce((sum, v) => sum + (v.impressions || 0), 0);
+            const totalClicks = variants.reduce((sum, v) => sum + (v.clicks || 0), 0);
+
+            technicalIssues.push({
+              query: q.query,
+              issueTypes,
+              variants: variants.map(v => ({
+                url: v.url,
+                impressions: v.impressions || 0,
+                clicks: v.clicks || 0,
+                position: v.position || 0,
+                impressionsPercentage: totalImpressions > 0
+                  ? ((v.impressions || 0) / totalImpressions) * 100
+                  : 0
+              })).sort((a, b) => b.impressions - a.impressions),
+              totalImpressions,
+              totalClicks,
+              variantsCount: variants.length
+            });
+          }
+        }
+      });
+    });
+
+    // Trier par impact (impressions) et dédupliquer
+    const seenGroups = new Map();
+    const uniqueTechnicalIssues = technicalIssues
+      .sort((a, b) => b.totalImpressions - a.totalImpressions)
+      .filter(issue => {
+        // Créer une clé unique basée sur les URLs (triées)
+        const key = issue.variants.map((v: any) => v.url).sort().join('|');
+        if (seenGroups.has(key)) return false;
+        seenGroups.set(key, true);
+        return true;
+      })
+      .slice(0, 20); // Top 20 problèmes techniques
+
+    console.log(`Technical URL issues detected: ${uniqueTechnicalIssues.length} groups of URL variants`);
+
     return NextResponse.json({
       analysis,
       classifiedQueries,
-      brandQueries: brandQueries // Requêtes marque séparées
+      brandQueries: brandQueries, // Requêtes marque séparées
+      cannibalisations, // Dangers de cannibalisation
+      technicalIssues: uniqueTechnicalIssues // NOUVEAU : Problèmes techniques d'URL
     });
 
   } catch (error) {

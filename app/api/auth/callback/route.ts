@@ -8,10 +8,8 @@ export async function GET(request: NextRequest) {
     const error = searchParams.get('error');
 
     if (error) {
-      return new NextResponse(
-        `<html><body><script>window.opener.postMessage({ error: '${error}' }, '*'); window.close();</script></body></html>`,
-        { headers: { 'Content-Type': 'text/html' } }
-      );
+      const html = '<html><body><script>window.opener.postMessage({ error: "' + error + '" }, "*"); window.close();</script></body></html>';
+      return new NextResponse(html, { headers: { 'Content-Type': 'text/html' } });
     }
 
     if (!code) {
@@ -24,22 +22,16 @@ export async function GET(request: NextRequest) {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
-      `${process.env.NEXTAUTH_URL}/api/auth/callback`
+      process.env.NEXTAUTH_URL + '/api/auth/callback'
     );
 
-    // Échanger le code contre un access token
     const { tokens } = await oauth2Client.getToken(code);
 
-    // Envoyer le token au frontend via postMessage puis fermer la popup
     const expiresAt = tokens.expiry_date || 0;
-    const html = `<html><body><script>
-      window.opener.postMessage({
-        accessToken: '${tokens.access_token}',
-        refreshToken: '${tokens.refresh_token || ''}',
-        expiresAt: ${expiresAt}
-      }, '*');
-      window.close();
-    </script></body></html>`;
+    const accessToken = tokens.access_token || '';
+    const refreshToken = tokens.refresh_token || '';
+
+    const html = '<html><body><script>window.opener.postMessage({accessToken:"' + accessToken + '",refreshToken:"' + refreshToken + '",expiresAt:' + expiresAt + '},"*");window.close();</script></body></html>';
 
     return new NextResponse(html, {
       headers: { 'Content-Type': 'text/html' }
@@ -47,9 +39,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Error in OAuth callback:', error);
-    return new NextResponse(
-      `<html><body><script>window.opener.postMessage({ error: 'Authentication failed' }, '*'); window.close();</script></body></html>`,
-      { headers: { 'Content-Type': 'text/html' } }
-    );
+    const html = '<html><body><script>window.opener.postMessage({ error: "Authentication failed" }, "*"); window.close();</script></body></html>';
+    return new NextResponse(html, { headers: { 'Content-Type': 'text/html' } });
   }
 }

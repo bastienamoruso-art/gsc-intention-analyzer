@@ -79,12 +79,14 @@ export default function GSCIntentionAnalyzer() {
     totalClicks: number;
     totalImpressions: number;
     avgPosition: number;
+    urlsCount?: number;
     pages: Array<{
       url: string;
       position: number;
       clicks: number;
       impressions: number;
       ctr: number;
+      impressionsPercentage?: number;
     }>;
   }>>([]);
 
@@ -1602,7 +1604,7 @@ export default function GSCIntentionAnalyzer() {
                 <div>
                   <div style={{ ...styles.text, fontSize: '12px', color: '#999' }}>URLs en compétition</div>
                   <div style={{ ...styles.title, fontSize: '20px', color: '#ef4444' }}>
-                    {cannibalisations.reduce((sum, c) => sum + (c.urlsCount || c.pages.length), 0).toLocaleString()}
+                    {cannibalisations.reduce((sum: any, c: any) => sum + (c.urlsCount || c.pages.length), 0).toLocaleString()}
                   </div>
                 </div>
                 <div>
@@ -1692,7 +1694,7 @@ export default function GSCIntentionAnalyzer() {
                             </thead>
                             <tbody>
                               {cannibal.pages
-                                .sort((a, b) => b.impressionsPercentage - a.impressionsPercentage)
+                                .sort((a, b) => (b.impressionsPercentage ?? 0) - (a.impressionsPercentage ?? 0))
                                 .map((page, pageIdx) => (
                                   <tr key={pageIdx} style={{ background: pageIdx % 2 === 0 ? '#0a0a0a' : '#121212' }}>
                                     <td style={{
@@ -1744,7 +1746,7 @@ export default function GSCIntentionAnalyzer() {
                                       fontWeight: 'bold',
                                       color: '#ef4444'
                                     }}>
-                                      {page.impressionsPercentage.toFixed(1)}%
+                                      {(page.impressionsPercentage ?? 0).toFixed(1)}%
                                     </td>
                                     <td style={{ ...styles.text, padding: '10px', textAlign: 'center', borderBottom: '1px solid #222' }}>
                                       {(page.ctr * 100).toFixed(1)}%

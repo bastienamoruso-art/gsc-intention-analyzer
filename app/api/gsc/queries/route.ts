@@ -81,10 +81,10 @@ export async function POST(request: NextRequest) {
     });
 
     // Calculer les moyennes pondérées et CTR
-    const queries = Array.from(queryMap.values()).map(q => {
+    const queries = Array.from(queryMap.values()).map((q: any) => {
       // Position moyenne pondérée par impressions
       const totalWeightedPosition = q.pages.reduce(
-        (sum, p) => sum + (p.position * p.impressions),
+        (sum: any, p: any) => sum + (p.position * p.impressions),
         0
       );
       q.position = q.impressions > 0
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
         : 0;
 
       // Trier les pages par clicks (desc)
-      q.pages.sort((a, b) => b.clicks - a.clicks);
+      q.pages.sort((a: any, b: any) => b.clicks - a.clicks);
 
       return q;
     });

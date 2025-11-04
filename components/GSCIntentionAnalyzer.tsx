@@ -277,11 +277,35 @@ export default function GSCIntentionAnalyzer() {
     setIsLoading(true);
     setError('');
 
+    // 1. Filtrer par impressions minimum (50+) pour éliminer le bruit
+    // 2. Limiter à 5000 queries max pour éviter timeout et erreurs de parsing
+    // 3. Trier par impressions décroissantes pour garder les plus importantes
+    const MIN_IMPRESSIONS = 50;
+    const MAX_QUERIES = 5000;
+
+    let queriesToAnalyze = queries.filter(q => q.impressions >= MIN_IMPRESSIONS);
+
+    console.log(`📊 Filtrage: ${queries.length} → ${queriesToAnalyze.length} queries (impressions ≥ ${MIN_IMPRESSIONS})`);
+
+    if (queriesToAnalyze.length > MAX_QUERIES) {
+      queriesToAnalyze = [...queriesToAnalyze]
+        .sort((a, b) => b.impressions - a.impressions)
+        .slice(0, MAX_QUERIES);
+
+      console.log(`⚠️ Dataset réduit à ${MAX_QUERIES} requêtes (top impressions)`);
+    }
+
+    if (queriesToAnalyze.length === 0) {
+      setError(`Aucune requête avec au moins ${MIN_IMPRESSIONS} impressions. Veuillez ajuster vos filtres.`);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ queries, brand, sector })
+        body: JSON.stringify({ queries: queriesToAnalyze, brand, sector })
       });
 
       if (!response.ok) {

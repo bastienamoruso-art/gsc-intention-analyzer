@@ -220,7 +220,15 @@ FORMAT JSON STRICT :
       throw new Error('No JSON found in response 1');
     }
 
-    const analysis = JSON.parse(jsonMatch1[0]);
+    let analysis;
+    try {
+      analysis = JSON.parse(jsonMatch1[0]);
+    } catch (parseError) {
+      console.error('Failed to parse analysis JSON:', parseError);
+      console.error('Raw response 1 (first 1000 chars):', content1.text.substring(0, 1000));
+      console.error('JSON match length:', jsonMatch1[0].length);
+      throw new Error('Failed to parse analysis JSON - response may be truncated. Try reducing dataset size.');
+    }
 
     // ========================================
     // PROMPT 2 : Contrôle qualité quick wins

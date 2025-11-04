@@ -75,6 +75,12 @@ export default function GSCIntentionAnalyzer() {
   const [showBrandQueries, setShowBrandQueries] = useState<boolean>(false);
   const [showAllKeywordsForIntention, setShowAllKeywordsForIntention] = useState<string | null>(null);
 
+  // États pour connexion GSC OAuth
+  const [gscAccessToken, setGscAccessToken] = useState<string>('');
+  const [gscSites, setGscSites] = useState<Array<{ siteUrl: string; permissionLevel: string }>>([]);
+  const [selectedSite, setSelectedSite] = useState<string>('');
+  const [isLoadingGsc, setIsLoadingGsc] = useState<boolean>(false);
+
   // Afficher la popup 15 secondes après les résultats
   React.useEffect(() => {
     if (step === 2 && analysis) {
@@ -84,6 +90,98 @@ export default function GSCIntentionAnalyzer() {
       return () => clearTimeout(timer);
     }
   }, [step, analysis]);
+
+  // Listener pour recevoir le token OAuth
+  React.useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data.accessToken) {
+        setGscAccessToken(event.data.accessToken);
+        setIsLoadingGsc(true);
+
+        // Récupérer la liste des sites
+        try {
+          const response = await fetch('/api/gsc/sites', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accessToken: event.data.accessToken })
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to fetch GSC sites');
+          }
+
+          const data = await response.json();
+          setGscSites(data.sites);
+          setIsLoadingGsc(false);
+        } catch (error) {
+          console.error('Error fetching GSC sites:', error);
+          setError('Échec de la récupération des sites GSC');
+          setIsLoadingGsc(false);
+        }
+      } else if (event.data.error) {
+        setError('Erreur d\'authentification Google');
+        setIsLoadingGsc(false);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // Fonction pour se connecter à GSC
+  const connectToGSC = () => {
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+
+    window.open(
+      '/api/auth/gsc',
+      'gsc-auth',
+      `width=${width},height=${height},left=${left},top=${top}`
+    );
+  };
+
+  // Fonction pour récupérer les données GSC
+  const fetchGSCData = async () => {
+    if (!selectedSite || !gscAccessToken) {
+      setError('Veuillez sélectionner un site');
+      return;
+    }
+
+    setIsLoadingGsc(true);
+    setError('');
+
+    try {
+      // Calculer les dates (12 derniers mois)
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - 12);
+
+      const response = await fetch('/api/gsc/queries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: gscAccessToken,
+          siteUrl: selectedSite,
+          startDate: startDate.toISOString().split('T')[0],
+          endDate: endDate.toISOString().split('T')[0]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch GSC data');
+      }
+
+      const data = await response.json();
+      setQueries(data.queries);
+      setIsLoadingGsc(false);
+    } catch (error) {
+      console.error('Error fetching GSC data:', error);
+      setError('Échec de la récupération des données GSC');
+      setIsLoadingGsc(false);
+    }
+  };
 
   // Upload CSV
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -635,6 +733,114 @@ export default function GSCIntentionAnalyzer() {
                 </div>
 
                 <div style={{ marginBottom: '20px' }}>
+                  <label style={{ ...styles.text, display: 'block', marginBottom: '12px', fontWeight: 500 }}>
+                    📊 Import des données
+                  </label>
+
+                  {/* Bouton connexion GSC */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <button
+                      onClick={connectToGSC}
+                      disabled={isLoadingGsc}
+                      style={{
+                        ...styles.button,
+                        width: '100%',
+                        padding: '14px',
+                        background: '#4285f4',
+                        border: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '10px',
+                        fontSize: '15px',
+                        fontWeight: 600
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isLoadingGsc) {
+                          e.currentTarget.style.background = '#3367d6';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isLoadingGsc) {
+                          e.currentTarget.style.background = '#4285f4';
+                        }
+                      }}
+                    >
+                      {isLoadingGsc ? '⏳ Connexion...' : '🔗 Connecter Google Search Console'}
+                    </button>
+                    <p style={{ ...styles.text, fontSize: '12px', color: '#666', marginTop: '8px', textAlign: 'center' }}>
+                      Import direct depuis GSC (12 derniers mois, jusqu'à 25 000 requêtes)
+                    </p>
+                  </div>
+
+                  {/* Sélection du site GSC */}
+                  {gscSites.length > 0 && (
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
+                        Sélectionnez votre site
+                      </label>
+                      <select
+                        value={selectedSite}
+                        onChange={(e) => setSelectedSite(e.target.value)}
+                        style={{
+                          ...styles.text,
+                          width: '100%',
+                          padding: '12px',
+                          background: '#0a0a0a',
+                          border: '1px solid #333',
+                          borderRadius: '6px',
+                          color: '#fff',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="">-- Choisissez un site --</option>
+                        {gscSites.map((site) => (
+                          <option key={site.siteUrl} value={site.siteUrl}>
+                            {site.siteUrl}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedSite && (
+                        <button
+                          onClick={fetchGSCData}
+                          disabled={isLoadingGsc}
+                          style={{
+                            ...styles.button,
+                            width: '100%',
+                            padding: '12px',
+                            marginTop: '12px',
+                            background: '#0edd89'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isLoadingGsc) {
+                              e.currentTarget.style.background = '#0cbd6f';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isLoadingGsc) {
+                              e.currentTarget.style.background = '#0edd89';
+                            }
+                          }}
+                        >
+                          {isLoadingGsc ? '⏳ Chargement...' : '📥 Charger les données'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Séparateur */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    margin: '20px 0',
+                    gap: '10px'
+                  }}>
+                    <div style={{ flex: 1, height: '1px', background: '#333' }}></div>
+                    <span style={{ ...styles.text, color: '#666', fontSize: '13px' }}>OU</span>
+                    <div style={{ flex: 1, height: '1px', background: '#333' }}></div>
+                  </div>
+
+                  {/* Upload CSV */}
                   <label style={{ ...styles.text, display: 'block', marginBottom: '8px', fontWeight: 500 }}>
                     📁 Export CSV Google Search Console
                   </label>

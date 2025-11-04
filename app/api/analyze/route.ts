@@ -53,11 +53,11 @@ export async function POST(request: NextRequest) {
     const wordFrequency = new Map<string, number>();
     const totalQueries = queryData.length;
 
-    queryData.forEach(q => {
+    queryData.forEach((q: any) => {
       const words = q.query.toLowerCase().split(/\s+/);
       const uniqueWords: Set<string> = new Set(words); // Compter 1 fois par query
 
-      uniqueWords.forEach((word) => {
+      uniqueWords.forEach((word: any) => {
         // Ignorer mots < 3 lettres et nombres purs
         if (word.length > 2 && !/^\d+$/.test(word)) {
           wordFrequency.set(word, (wordFrequency.get(word) || 0) + 1);
@@ -308,7 +308,7 @@ FORMAT JSON STRICT :
       // Ex: "escape game paris pas cher" et "escape game pas cher paris" → 1 seule
       const seenNormalized = new Map();
 
-      quickWinCandidates.forEach(q => {
+      quickWinCandidates.forEach((q: any) => {
         const normalized = normalizeQuery(q.query);
 
         if (!seenNormalized.has(normalized)) {
@@ -575,7 +575,7 @@ FORMAT JSON STRICT :
     // Ex: "escape game paris a 2" et "escape game a 2 paris" → 1 seule
     const seenNormalizedCannib = new Map();
 
-    queryData.forEach(q => {
+    queryData.forEach((q: any) => {
       const normalized = normalizeQuery(q.query);
 
       if (!seenNormalizedCannib.has(normalized)) {
@@ -635,7 +635,7 @@ FORMAT JSON STRICT :
 
     // Calculer totaux pour filtrage adaptatif
     const totalCannibImpressions = cannibalisationsByQuery.reduce(
-      (sum, c) => sum + c.totalImpressions, 0
+      (sum: any, c: any) => sum + c.totalImpressions, 0
     );
 
     // FILTRAGE ADAPTATIF : Ne garder que les requêtes vraiment problématiques
@@ -666,7 +666,7 @@ FORMAT JSON STRICT :
     const technicalIssues: any[] = [];
 
     // Parcourir toutes les requêtes avec leurs pages
-    queryData.forEach(q => {
+    queryData.forEach((q: any) => {
       if (!q.pages || q.pages.length <= 1) return;
 
       const pagesInTop20 = q.pages.filter((p: any) => p.position >= 1 && p.position <= 20);
@@ -675,7 +675,7 @@ FORMAT JSON STRICT :
       // Grouper les URLs par version normalisée
       const urlGroups = new Map<string, any[]>();
 
-      pagesInTop20.forEach(page => {
+      pagesInTop20.forEach((page: any) => {
         const normalized = normalizeUrl(page.url);
         if (!urlGroups.has(normalized)) {
           urlGroups.set(normalized, []);
@@ -684,7 +684,7 @@ FORMAT JSON STRICT :
       });
 
       // Trouver les groupes avec plusieurs variantes techniques
-      urlGroups.forEach((variants, normalized) => {
+      urlGroups.forEach((variants: any, normalized: any) => {
         if (variants.length >= 2) {
           // Détecter le type de problème
           const urls = variants.map((v: any) => v.url);

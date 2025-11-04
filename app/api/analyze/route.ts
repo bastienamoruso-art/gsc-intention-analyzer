@@ -12,22 +12,22 @@ export async function POST(request: NextRequest) {
   let queueAcquired = false;
 
   try {
-    // 1️⃣ RATE LIMITING PAR IP (3 analyses/jour)
+    // 1️⃣ RATE LIMITING PAR IP (5 analyses/jour)
     const clientIP = getClientIP(request);
-    const rateLimit = checkRateLimit(clientIP, 3);
+    const rateLimit = checkRateLimit(clientIP, 5);
 
     if (!rateLimit.allowed) {
       const resetDate = new Date(rateLimit.resetAt);
       return NextResponse.json(
         {
           error: 'Limite d\'analyses atteinte',
-          message: `Vous avez atteint votre limite de 3 analyses gratuites par jour. Réessayez après ${resetDate.toLocaleTimeString('fr-FR')} (UTC).`,
+          message: `Vous avez atteint votre limite de 5 analyses gratuites par jour. Réessayez après ${resetDate.toLocaleTimeString('fr-FR')} (UTC).`,
           resetAt: rateLimit.resetAt
         },
         {
           status: 429,
           headers: {
-            'X-RateLimit-Limit': '3',
+            'X-RateLimit-Limit': '5',
             'X-RateLimit-Remaining': rateLimit.remaining.toString(),
             'X-RateLimit-Reset': rateLimit.resetAt.toString()
           }
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2️⃣ FILE D'ATTENTE (max 5 analyses simultanées)
+    // 2️⃣ FILE D'ATTENTE (max 15 analyses simultanées)
     const queueStats = analysisQueue.getQueueStats();
 
     // Informer l'utilisateur s'il doit attendre
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     // Attendre son tour
     await analysisQueue.acquire(requestId);
     queueAcquired = true; // Marquer que le slot a été acquis
-    console.log(`[Queue] Request ${requestId} en traitement (${queueStats.processing + 1}/5)`);
+    console.log(`[Queue] Request ${requestId} en traitement (${queueStats.processing + 1}/15)`);
 
     const { queries, brand, sector } = await request.json();
 

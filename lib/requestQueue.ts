@@ -79,4 +79,4 @@ class RequestQueue {
 }
 
 // Instance globale singleton
-export const analysisQueue = new RequestQueue(5); // Max 5 analyses simultanées
+export const analysisQueue = new RequestQueue(15); // Max 15 analyses simultanées

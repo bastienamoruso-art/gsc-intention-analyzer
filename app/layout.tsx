@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Analytics } from '@vercel/analytics/next';
 
 export const metadata: Metadata = {
   title: 'GSC Intention Analyzer - kamak',
@@ -24,6 +25,7 @@ export default function RootLayout({
         color: '#ffffff'
       }}>
         {children}
+        <Analytics />
       </body>
     </html>
   );
